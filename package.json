@@ -1,0 +1,57 @@
+{
+  "name": "@resemblio/mcp-server",
+  "version": "0.0.0",
+  "description": "Model Context Protocol server for Resemblio - extract brand-stripped, code-bearing design systems from any URL",
+  "license": "MIT",
+  "author": "Frank Jones <frank@optsus.com>",
+  "homepage": "https://resemblio.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FrankCJones/resemblio-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/FrankCJones/resemblio-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "resemblio",
+    "design-tokens",
+    "design-system",
+    "dtcg"
+  ],
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "resemblio-mcp-server": "dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
