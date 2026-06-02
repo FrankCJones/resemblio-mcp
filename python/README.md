@@ -1,11 +1,13 @@
-# @resemblio/mcp-server
+# resemblio-mcp
 
-Model Context Protocol server for [Resemblio](https://resemblio.com). Lets MCP-compatible clients (Claude Desktop, Claude Code, Cursor, Codex CLI) extract brand-stripped, code-bearing design systems from any URL.
+Model Context Protocol server for [Resemblio](https://resemblio.com), Python edition. Lets MCP-compatible clients (Claude Desktop, Claude Code, Cursor, Codex CLI) extract brand-stripped, code-bearing design systems from any URL.
 
 ## Install
 
 ```bash
-npm install -g @resemblio/mcp-server
+pip install resemblio-mcp
+# or
+pipx install resemblio-mcp
 ```
 
 ## Configure
@@ -24,7 +26,7 @@ Edit `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/
 {
   "mcpServers": {
     "resemblio": {
-      "command": "resemblio-mcp-server",
+      "command": "resemblio-mcp",
       "env": {
         "RESEMBLIO_API_KEY": "rsmb_live_xxxxxxxxxxxx"
       }
@@ -41,7 +43,7 @@ Edit `~/.cursor/mcp.json`:
 {
   "mcpServers": {
     "resemblio": {
-      "command": "resemblio-mcp-server",
+      "command": "resemblio-mcp",
       "env": {
         "RESEMBLIO_API_KEY": "rsmb_live_xxxxxxxxxxxx"
       }
@@ -53,10 +55,12 @@ Edit `~/.cursor/mcp.json`:
 ### Claude Code (CLI)
 
 ```bash
-claude mcp add resemblio resemblio-mcp-server -e RESEMBLIO_API_KEY=rsmb_live_xxxxxxxxxxxx
+claude mcp add resemblio resemblio-mcp -e RESEMBLIO_API_KEY=rsmb_live_xxxxxxxxxxxx
 ```
 
 ## Tools exposed
+
+Identical contract to the TypeScript package `@resemblio/mcp-server`.
 
 ### `resemblio_extract`
 
@@ -91,10 +95,8 @@ Equivalent CLI flags: `--api-key`, `--base-url`.
 ## Development
 
 ```bash
-npm install
-npm run typecheck
-npm test
-npm run build
+pip install -e ".[dev]"
+pytest
 ```
 
 ## License
