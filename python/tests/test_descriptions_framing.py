@@ -4,10 +4,12 @@ Phase 0 carry-forward (2026-06-04 Inspirado correction plan), YELLOW
 item 3: the Python edition's user-visible descriptions must not advertise
 "brand-stripped" framing after the 2026-06-04 lock.
 
-Two surfaces are pinned here:
+Three surfaces are pinned here:
 
 1. ``pyproject.toml#project.description`` -- what PyPI renders.
 2. ``README.md`` lede -- what GitHub renders.
+3. ``src/resemblio_mcp/*.py`` string literals -- what MCP clients (Claude
+   Code, etc.) render as tool descriptions at runtime.
 
 The TypeScript edition's surfaces are pinned by
 ``code/mcp/tests/descriptions-framing.test.ts``.
@@ -91,3 +93,30 @@ def test_readme_lede_reflects_inspirado_reframe() -> None:
     assert REFRAME_ANCHOR.search(lede), (
         f"README.md lede should carry the Inspirado reframe; got lede: {lede!r}"
     )
+
+
+def _iter_source_files() -> list[Path]:
+    """Return every ``.py`` file under ``src/resemblio_mcp/``.
+
+    Tool descriptions rendered to MCP clients live in code string literals,
+    not just package metadata. The 2026-06-05 L9 scaffold caught a
+    "brand-stripped" hit in ``server.py`` line 114 that the metadata-only
+    tests missed. This helper closes that seam.
+    """
+    pkg_src = PKG_ROOT / "src" / "resemblio_mcp"
+    return sorted(pkg_src.rglob("*.py"))
+
+
+def test_source_files_have_no_banned_framing() -> None:
+    """MCP client-facing strings (tool descriptions) live in the source."""
+    sources = _iter_source_files()
+    assert sources, "expected at least one .py file under src/resemblio_mcp/"
+
+    for path in sources:
+        contents = path.read_text(encoding="utf-8")
+        for banned in BANNED_FRAMINGS:
+            match = banned.search(contents)
+            assert match is None, (
+                f"{path.relative_to(PKG_ROOT)} must not match {banned.pattern!r}; "
+                f"hit: {match.group(0)!r}"
+            )

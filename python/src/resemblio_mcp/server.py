@@ -111,9 +111,10 @@ async def _serve(client: ResemblioClient) -> None:
             Tool(
                 name=EXTRACT_TOOL_NAME,
                 description=(
-                    "Extract a brand-stripped, code-bearing design system from a URL. "
-                    "Returns DTCG tokens, a signed manifest URL, and a ZIP download URL. "
-                    "Charges the configured Resemblio account ($5 public / $10 private)."
+                    "Extract a trademark-stripped, brand-faithful, code-bearing design "
+                    "system from a URL. Inspirado, no copiado. Returns DTCG tokens, a "
+                    "signed manifest URL, and a ZIP download URL. Charges the configured "
+                    "Resemblio account ($5 public / $10 private)."
                 ),
                 inputSchema=EXTRACT_INPUT_SCHEMA,
             ),
