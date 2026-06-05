@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "resemblio-mcp"
 version = "0.1.0"
-description = "Model Context Protocol server for Resemblio - extract brand-stripped, code-bearing design systems from any URL."
+description = "Model Context Protocol server for Resemblio - extract trademark-stripped, brand-faithful, code-bearing design systems from any URL. Inspirado, no copiado."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Frank Jones", email = "frank@optsus.com" }]

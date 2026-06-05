@@ -1,6 +1,6 @@
 # @resemblio/mcp-server
 
-Model Context Protocol server for [Resemblio](https://resemblio.com). Lets MCP-compatible clients (Claude Desktop, Claude Code, Cursor, Codex CLI) extract brand-stripped, code-bearing design systems from any URL.
+Model Context Protocol server for [Resemblio](https://resemblio.com). Lets MCP-compatible clients (Claude Desktop, Claude Code, Cursor, Codex CLI) extract trademark-stripped, brand-faithful, code-bearing design systems from any URL. Inspired by the source, not a copy of it (_inspirado, no copiado_).
 
 ## Install
 
@@ -13,7 +13,7 @@ npm install -g @resemblio/mcp-server
 Set your API key (get one at https://resemblio.com):
 
 ```bash
-export RESEMBLIO_API_KEY=rsmb_live_xxxxxxxxxxxx
+export RESEMBLIO_API_KEY=rsmb_live_<your-key>
 ```
 
 ### Claude Desktop
@@ -26,7 +26,7 @@ Edit `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/
     "resemblio": {
       "command": "resemblio-mcp-server",
       "env": {
-        "RESEMBLIO_API_KEY": "rsmb_live_xxxxxxxxxxxx"
+        "RESEMBLIO_API_KEY": "rsmb_live_<your-key>"
       }
     }
   }
@@ -43,7 +43,7 @@ Edit `~/.cursor/mcp.json`:
     "resemblio": {
       "command": "resemblio-mcp-server",
       "env": {
-        "RESEMBLIO_API_KEY": "rsmb_live_xxxxxxxxxxxx"
+        "RESEMBLIO_API_KEY": "rsmb_live_<your-key>"
       }
     }
   }
@@ -53,14 +53,14 @@ Edit `~/.cursor/mcp.json`:
 ### Claude Code (CLI)
 
 ```bash
-claude mcp add resemblio resemblio-mcp-server -e RESEMBLIO_API_KEY=rsmb_live_xxxxxxxxxxxx
+claude mcp add resemblio resemblio-mcp-server -e RESEMBLIO_API_KEY=rsmb_live_<your-key>
 ```
 
 ## Tools exposed
 
 ### `resemblio_extract`
 
-Extract a brand-stripped design system from a URL. Returns a DTCG-compatible token JSON, a signed manifest URL, and a download URL for the full ZIP bundle.
+Extract a trademark-stripped, brand-faithful design system from a URL. Wordmarks, logos, and literal trademark marks are stripped; colours, type, spacing, scale, and component patterns are preserved as a code-bearing starting point. Returns a DTCG-compatible token JSON, a signed manifest URL, and a download URL for the full ZIP bundle.
 
 Input:
 - `url` (string, required): the page to extract from

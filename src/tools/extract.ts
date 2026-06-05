@@ -129,6 +129,6 @@ export async function runExtract(
 export const extractTool = {
   name: 'resemblio_extract',
   description:
-    'Extract a brand-stripped, code-bearing design system from a URL. Returns DTCG tokens, a signed manifest URL, and a ZIP download URL. Charges the configured Resemblio account ($5 public / $10 private).',
+    'Extract a trademark-stripped, brand-faithful, code-bearing design system from a URL. Wordmarks, logos, and literal trademark marks are stripped; colours, type, spacing, scale, and component patterns are preserved (inspirado, no copiado). Returns DTCG tokens, a signed manifest URL, and a ZIP download URL. Charges the configured Resemblio account ($5 public / $10 private).',
   inputSchema: extractInputSchema,
 } as const;
