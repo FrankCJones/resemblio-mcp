@@ -1,10 +1,12 @@
 /**
  * Thin HTTP client for the Resemblio v1 REST API.
  *
- * Wraps the three endpoints the MCP tools consume:
+ * Wraps the five endpoints the MCP tools consume:
  *   POST /v1/extractions          - create a charged extraction
  *   GET  /v1/extractions          - paginated history
  *   GET  /v1/extractions/{id}     - fetch one extraction
+ *   GET  /v1/library/manifests/apple - fetch the free canonical manifest
+ *   GET  /v1/apple/exports/dtcg   - fetch an entitled export artifact
  *
  * Auth model: every call carries `Authorization: Bearer <apiKey>`. The key
  * is supplied at server-start via the `RESEMBLIO_API_KEY` env var (or the
@@ -17,6 +19,147 @@
  * spend cap, etc.). Mirrors the retry posture of
  * `projects/Resemblio/code/api/app/extractor_bridge.py`.
  */
+
+import { createHash } from 'node:crypto';
+
+/** Exact polymorphic record shape inside the Apple system artifact. */
+export interface AppleSystemManifestRecord {
+  record_id: string;
+  slug: string;
+  classification: 'foundation' | 'component' | 'composition';
+  route: string;
+  aliases: string[];
+  readiness: Record<string, unknown>;
+  evidence: Record<string, unknown>;
+  facets: Record<string, unknown>;
+  facet_evidence_sha256: string;
+  relationships: Record<string, unknown>;
+  compiler_version: string;
+  [key: string]: unknown;
+}
+
+/** Canonical content-addressed public Apple library artifact. */
+export interface AppleSystemManifest {
+  schema_version: 'resemblio_apple_system_manifest_v1';
+  artifact_id: string;
+  artifact_version: string;
+  compiler_version: string;
+  normalization_policy_version: string;
+  inventory_version: string;
+  inventory_sha256: string;
+  evidence_set_sha256: string;
+  artifact_sha256: string;
+  record_count: number;
+  breakdown: Record<string, number>;
+  attribution: Record<string, unknown>;
+  scrub_policy: Record<string, unknown>;
+  records: AppleSystemManifestRecord[];
+  projections: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/** Additive API envelope around the untouched canonical artifact. */
+export interface AppleSystemManifestResponse {
+  schema_version: 2;
+  data: AppleSystemManifest;
+}
+
+/** Untouched artifact returned by the entitled Apple DTCG export endpoint. */
+export interface AppleLibraryExport {
+  schema_version: 'resemblio_apple_export_product_v1';
+  artifact_id: 'apple-system-dtcg';
+  artifact_version: string;
+  artifact_sha256: string;
+  selection: Record<string, unknown>;
+  token_document: Record<string, unknown>;
+  records: Record<string, unknown>[];
+  dependencies: Record<string, unknown>[];
+  [key: string]: unknown;
+}
+
+/** Discriminated selector forwarded to GET /v1/apple/exports/dtcg. */
+export type AppleLibraryExportSelection =
+  | { selection: 'complete' }
+  | { selection: 'classification'; classification: 'foundation' | 'component' | 'composition' }
+  | { selection: 'record'; record_ids: string[] };
+
+export const APPLE_SYSTEM_MANIFEST_PATH = '/v1/library/manifests/apple';
+export const APPLE_LIBRARY_EXPORT_PATH = '/v1/apple/exports/dtcg';
+const APPLE_SYSTEM_MANIFEST_SCHEMA = 'resemblio_apple_system_manifest_v1';
+const SHA256_RE = /^[a-f0-9]{64}$/;
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function requireNonEmptyString(value: unknown, field: string): asserts value is string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error(`Apple system manifest has invalid ${field}`);
+  }
+}
+
+function jsonAsciiString(value: string): string {
+  return JSON.stringify(value).replace(/[\u007f-\uffff]/g, (char) =>
+    `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
+}
+
+/** Serialize canonical sorted compact ASCII JSON for the artifact hash. */
+export function canonicalJson(value: JsonValue): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const object = value as { [key: string]: JsonValue };
+    return `{${Object.keys(object).sort().map((key) =>
+      `${jsonAsciiString(key)}:${canonicalJson(object[key])}`).join(',')}}`;
+  }
+  if (typeof value === 'string') return jsonAsciiString(value);
+  return JSON.stringify(value);
+}
+
+/** Validate the canonical artifact without adding an MCP-specific shape. */
+export function validateAppleSystemManifest(payload: unknown): AppleSystemManifest {
+  if (!isPlainObject(payload)) throw new Error('Apple system manifest must be an object');
+  if (payload.schema_version !== APPLE_SYSTEM_MANIFEST_SCHEMA) {
+    throw new Error('Apple system manifest has an unsupported schema_version');
+  }
+  for (const field of [
+    'artifact_id', 'artifact_version', 'compiler_version',
+    'normalization_policy_version', 'inventory_version', 'inventory_sha256',
+    'evidence_set_sha256', 'artifact_sha256',
+  ]) requireNonEmptyString(payload[field], field);
+  for (const field of ['inventory_sha256', 'evidence_set_sha256', 'artifact_sha256']) {
+    if (!SHA256_RE.test(payload[field] as string)) {
+      throw new Error(`Apple system manifest has invalid ${field}`);
+    }
+  }
+  if (!Number.isInteger(payload.record_count) || (payload.record_count as number) < 0) {
+    throw new Error('Apple system manifest has invalid record_count');
+  }
+  if (!isPlainObject(payload.breakdown) || !isPlainObject(payload.attribution) ||
+      !isPlainObject(payload.scrub_policy) || !isPlainObject(payload.projections)) {
+    throw new Error('Apple system manifest has invalid public metadata');
+  }
+  if (!Array.isArray(payload.records) || payload.records.length !== payload.record_count) {
+    throw new Error('Apple system manifest has invalid records');
+  }
+  const { artifact_sha256: suppliedDigest, ...body } = payload;
+  const expectedDigest = createHash('sha256')
+    .update(`${canonicalJson(body as JsonValue)}\n`, 'utf8')
+    .digest('hex');
+  if (suppliedDigest !== expectedDigest) {
+    throw new Error('Apple system manifest artifact_sha256 does not match its body');
+  }
+  return payload as AppleSystemManifest;
+}
+
+/** Validate the outer API envelope and expose its data payload unchanged. */
+export function validateAppleSystemManifestResponse(payload: unknown): AppleSystemManifest {
+  if (!isPlainObject(payload) || payload.schema_version !== 2 || !('data' in payload)) {
+    throw new Error('Apple system manifest response has an unsupported schema_version');
+  }
+  return validateAppleSystemManifest(payload.data);
+}
 
 /**
  * Compact extraction-list-item shape returned by GET /v1/extractions.
@@ -186,6 +329,37 @@ export class ResemblioClient {
    */
   async getExtraction(extractionId: number): Promise<ExtractionResponse> {
     return this.request<ExtractionResponse>('GET', `/v1/extractions/${extractionId}`);
+  }
+
+  /** Fetch the verified canonical Apple artifact without charging credits. */
+  async getAppleSystemManifest(): Promise<AppleSystemManifest> {
+    const envelope = await this.request<unknown>('GET', APPLE_SYSTEM_MANIFEST_PATH);
+    return validateAppleSystemManifestResponse(envelope);
+  }
+
+  /** Fetch an entitled, no-cost Apple DTCG export for the requested slice. */
+  async getAppleLibraryExport(selection: AppleLibraryExportSelection): Promise<AppleLibraryExport> {
+    const search = new URLSearchParams({ selection: selection.selection });
+    if (selection.selection === 'classification') search.set('classification', selection.classification);
+    if (selection.selection === 'record') {
+      for (const recordId of selection.record_ids) search.append('record', recordId);
+    }
+    const envelope = await this.request<unknown>(
+      'GET', `${APPLE_LIBRARY_EXPORT_PATH}?${search.toString()}`,
+    );
+    if (!isPlainObject(envelope) || envelope.schema_version !== 2 || !('data' in envelope) ||
+        !isPlainObject(envelope.data)) {
+      throw new Error('Apple library export response has an unsupported schema_version');
+    }
+    const data = envelope.data;
+    if (data.schema_version !== 'resemblio_apple_export_product_v1' ||
+        data.artifact_id !== 'apple-system-dtcg' || typeof data.artifact_version !== 'string' ||
+        typeof data.artifact_sha256 !== 'string' || !SHA256_RE.test(data.artifact_sha256) ||
+        !isPlainObject(data.selection) || !isPlainObject(data.token_document) ||
+        !Array.isArray(data.records) || !Array.isArray(data.dependencies)) {
+      throw new Error('Apple library export has an invalid artifact shape');
+    }
+    return data as unknown as AppleLibraryExport;
   }
 
   /**

@@ -79,6 +79,21 @@ Input:
 
 No charge.
 
+### `resemblio_get_library_manifest`
+
+Retrieve the verified canonical Apple library manifest. This no-input, read-only tool is free and returns the API artifact unchanged, including its record set, classification-specific facets, version, and SHA-256 digest.
+
+### `resemblio_get_library_export`
+
+Retrieve a no-cost Apple DTCG export. Requires an entitled Resemblio API key. The API artifact is returned unchanged.
+
+Input uses one selector:
+- `{ "selection": "complete" }`
+- `{ "selection": "classification", "classification": "foundation" | "component" | "composition" }`
+- `{ "selection": "record", "record_ids": ["component:buttons"] }` (one or more canonical record IDs)
+
+Record IDs are deduplicated and sorted before the API request. Invalid selectors fail closed; the API's stable selection errors are preserved.
+
 ## Configuration reference
 
 | Env var | Required | Default | Description |

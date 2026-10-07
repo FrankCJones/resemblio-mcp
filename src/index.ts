@@ -2,7 +2,7 @@
 /**
  * Resemblio MCP server entrypoint.
  *
- * Advertises two tools (`resemblio_extract`, `resemblio_list_extractions`)
+ * Advertises four tools (`resemblio_extract`, `resemblio_list_extractions`, `resemblio_get_library_manifest`, `resemblio_get_library_export`)
  * over stdio per the MCP spec. Auth is provided at process start via the
  * `RESEMBLIO_API_KEY` environment variable or the `--api-key <value>`
  * command-line flag.
@@ -23,8 +23,14 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 
-import { ResemblioClient } from './client.js';
+import { ResemblioApiError, ResemblioClient } from './client.js';
 import { extractTool, runExtract, type ExtractToolInput } from './tools/extract.js';
+import {
+  getLibraryManifestTool,
+  runGetLibraryManifest,
+  type GetLibraryManifestInput,
+} from './tools/get_library_manifest.js';
+import { getLibraryExportTool, runGetLibraryExport } from './tools/get_library_export.js';
 import {
   listExtractionsTool,
   runListExtractions,
@@ -83,7 +89,7 @@ export function buildServer(client: ResemblioClient): Server {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [extractTool, listExtractionsTool],
+    tools: [extractTool, listExtractionsTool, getLibraryManifestTool, getLibraryExportTool],
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -97,12 +103,22 @@ export function buildServer(client: ResemblioClient): Server {
         const output = await runListExtractions(client, (args ?? {}) as unknown as ListExtractionsInput);
         return { content: [{ type: 'text', text: JSON.stringify(output, null, 2) }] };
       }
+      if (name === getLibraryManifestTool.name) {
+        const output = await runGetLibraryManifest(client, (args ?? {}) as GetLibraryManifestInput);
+        return { content: [{ type: 'text', text: JSON.stringify(output, null, 2) }] };
+      }
+      if (name === getLibraryExportTool.name) {
+        const output = await runGetLibraryExport(client, args ?? {});
+        return { content: [{ type: 'text', text: JSON.stringify(output, null, 2) }] };
+      }
       return {
         isError: true,
         content: [{ type: 'text', text: `Unknown tool: ${name}` }],
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = err instanceof ResemblioApiError
+        ? `${err.message}: ${JSON.stringify(err.body)}`
+        : err instanceof Error ? err.message : String(err);
       return { isError: true, content: [{ type: 'text', text: message }] };
     }
   });

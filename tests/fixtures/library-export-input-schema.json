@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "oneOf": [
+    {
+      "properties": { "selection": { "const": "complete" } },
+      "required": ["selection"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "selection": { "const": "classification" },
+        "classification": { "type": "string", "enum": ["foundation", "component", "composition"] }
+      },
+      "required": ["selection", "classification"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "selection": { "const": "record" },
+        "record_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^(foundation|component|composition):[a-z0-9][a-z0-9-]*$" }
+        }
+      },
+      "required": ["selection", "record_ids"],
+      "additionalProperties": false
+    }
+  ],
+  "additionalProperties": false
+}

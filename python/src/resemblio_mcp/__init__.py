@@ -13,6 +13,7 @@ Public surface:
 __version__ = "0.1.0"
 
 from resemblio_mcp.client import (
+    AppleSystemManifestPayload,
     ExtractionListItem,
     ExtractionListResponse,
     ExtractionManifest,
@@ -22,6 +23,7 @@ from resemblio_mcp.client import (
 )
 
 __all__ = [
+    "AppleSystemManifestPayload",
     "ExtractionListItem",
     "ExtractionListResponse",
     "ExtractionManifest",

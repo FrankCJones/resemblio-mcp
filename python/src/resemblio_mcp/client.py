@@ -1,10 +1,12 @@
 """Thin httpx client for the Resemblio v1 REST API.
 
-Wraps the three endpoints the MCP tools consume:
+Wraps the five endpoints the MCP tools consume:
 
 * ``POST /v1/extractions`` - create a charged extraction.
 * ``GET  /v1/extractions`` - paginated history (no charge).
 * ``GET  /v1/extractions/{id}`` - fetch one cached row (no charge).
+* ``GET  /v1/library/manifests/apple`` - fetch the free canonical manifest.
+* ``GET  /v1/apple/exports/dtcg`` - fetch an entitled export artifact.
 
 Auth model: every call carries ``Authorization: Bearer <api_key>``. The
 key is supplied at server-start via the ``RESEMBLIO_API_KEY`` env var or
@@ -20,7 +22,10 @@ URL, spend cap, etc.). Mirrors the retry posture of
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+import hashlib
+import json
+import re
+from typing import Any, Literal, TypedDict, cast
 
 import httpx
 from pydantic import BaseModel, ConfigDict
@@ -29,6 +34,117 @@ DEFAULT_BASE_URL = "https://api.resemblio.com"
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_BACKOFF_S = 0.25
 DEFAULT_TIMEOUT_S = 60.0
+
+
+AppleSystemManifestPayload = TypedDict(
+    "AppleSystemManifestPayload",
+    {
+        "schema_version": str,
+        "artifact_id": str,
+        "artifact_version": str,
+        "compiler_version": str,
+        "normalization_policy_version": str,
+        "inventory_version": str,
+        "inventory_sha256": str,
+        "evidence_set_sha256": str,
+        "artifact_sha256": str,
+        "record_count": int,
+        "breakdown": dict[str, int],
+        "attribution": dict[str, Any],
+        "scrub_policy": dict[str, Any],
+        "records": list[dict[str, Any]],
+        "projections": dict[str, Any],
+    },
+)
+
+APPLE_SYSTEM_MANIFEST_PATH = "/v1/library/manifests/apple"
+APPLE_LIBRARY_EXPORT_PATH = "/v1/apple/exports/dtcg"
+APPLE_SYSTEM_MANIFEST_SCHEMA = "resemblio_apple_system_manifest_v1"
+SHA256_HEX_RE = re.compile(r"^[a-f0-9]{64}$")
+
+
+class AppleLibraryExport(TypedDict):
+    """Typed top-level DTCG export fields, preserving future API fields."""
+
+    schema_version: Literal["resemblio_apple_export_product_v1"]
+    artifact_id: Literal["apple-system-dtcg"]
+    artifact_version: str
+    artifact_sha256: str
+    selection: dict[str, Any]
+    token_document: dict[str, Any]
+    records: list[dict[str, Any]]
+    dependencies: list[dict[str, Any]]
+
+
+class AppleLibraryExportEnvelope(TypedDict):
+    """Versioned API envelope around an unchanged export artifact."""
+
+    schema_version: Literal[2]
+    data: AppleLibraryExport
+
+
+class AppleLibraryExportCompleteSelection(TypedDict):
+    """Request all canonical export records."""
+
+    selection: Literal["complete"]
+
+
+class AppleLibraryExportClassificationSelection(TypedDict):
+    """Request one canonical classification slice."""
+
+    selection: Literal["classification"]
+    classification: Literal["foundation", "component", "composition"]
+
+
+class AppleLibraryExportRecordSelection(TypedDict):
+    """Request one or more canonical record IDs."""
+
+    selection: Literal["record"]
+    record_ids: list[str]
+
+
+AppleLibraryExportSelection = (
+    AppleLibraryExportCompleteSelection
+    | AppleLibraryExportClassificationSelection
+    | AppleLibraryExportRecordSelection
+)
+
+
+def _canonical_json(value: Any) -> str:
+    """Return sorted compact ASCII JSON used by the artifact digest contract."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def validate_apple_system_manifest(payload: Any) -> AppleSystemManifestPayload:
+    """Validate the artifact boundary while preserving the canonical mapping."""
+    if not isinstance(payload, dict):
+        raise ValueError("Apple system manifest must be an object")
+    if payload.get("schema_version") != APPLE_SYSTEM_MANIFEST_SCHEMA:
+        raise ValueError("Apple system manifest has an unsupported schema_version")
+    for field in (
+        "artifact_id", "artifact_version", "compiler_version",
+        "normalization_policy_version", "inventory_version", "inventory_sha256",
+        "evidence_set_sha256", "artifact_sha256",
+    ):
+        value = payload.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"Apple system manifest has invalid {field}")
+    for field in ("inventory_sha256", "evidence_set_sha256", "artifact_sha256"):
+        if SHA256_HEX_RE.fullmatch(payload[field]) is None:
+            raise ValueError(f"Apple system manifest has invalid {field}")
+    if not isinstance(payload.get("record_count"), int) or payload["record_count"] < 0:
+        raise ValueError("Apple system manifest has invalid record_count")
+    if not all(isinstance(payload.get(field), dict) for field in (
+        "breakdown", "attribution", "scrub_policy", "projections",
+    )):
+        raise ValueError("Apple system manifest has invalid public metadata")
+    if not isinstance(payload.get("records"), list) or len(payload["records"]) != payload["record_count"]:
+        raise ValueError("Apple system manifest has invalid records")
+    body = {key: value for key, value in payload.items() if key != "artifact_sha256"}
+    expected_digest = hashlib.sha256((_canonical_json(body) + "\n").encode("utf-8")).hexdigest()
+    if payload["artifact_sha256"] != expected_digest:
+        raise ValueError("Apple system manifest artifact_sha256 does not match its body")
+    return cast(AppleSystemManifestPayload, payload)
 
 
 class ExtractionListItem(BaseModel):
@@ -216,13 +332,49 @@ class ResemblioClient:
         payload = await self._request("GET", f"/v1/extractions/{extraction_id}")
         return ExtractionResponse.model_validate(payload)
 
+    async def get_apple_system_manifest(self) -> AppleSystemManifestPayload:
+        """Fetch the canonical Apple artifact without charge or MCP reshaping."""
+        envelope = await self._request("GET", APPLE_SYSTEM_MANIFEST_PATH)
+        if not isinstance(envelope, dict) or envelope.get("schema_version") != 2 or "data" not in envelope:
+            raise ValueError("Apple system manifest response has an unsupported schema_version")
+        return validate_apple_system_manifest(envelope["data"])
+
+    async def get_apple_library_export(
+        self, selection: AppleLibraryExportSelection
+    ) -> AppleLibraryExport:
+        """Fetch an entitled no-cost DTCG export and return its data unchanged."""
+        params: list[tuple[str, str]] = [("selection", selection["selection"])]
+        if selection["selection"] == "classification":
+            params.append(("classification", selection["classification"]))
+        elif selection["selection"] == "record":
+            params.extend(("record", record_id) for record_id in selection["record_ids"])
+        envelope = await self._request("GET", APPLE_LIBRARY_EXPORT_PATH, params=params)
+        if not isinstance(envelope, dict) or envelope.get("schema_version") != 2:
+            raise ValueError("Apple library export response has an unsupported schema_version")
+        if not isinstance(envelope.get("data"), dict):
+            raise ValueError("Apple library export response has invalid data")
+        data = envelope["data"]
+        if (
+            data.get("schema_version") != "resemblio_apple_export_product_v1"
+            or data.get("artifact_id") != "apple-system-dtcg"
+            or not isinstance(data.get("artifact_version"), str)
+            or not isinstance(data.get("artifact_sha256"), str)
+            or SHA256_HEX_RE.fullmatch(data["artifact_sha256"]) is None
+            or not isinstance(data.get("selection"), dict)
+            or not isinstance(data.get("token_document"), dict)
+            or not isinstance(data.get("records"), list)
+            or not isinstance(data.get("dependencies"), list)
+        ):
+            raise ValueError("Apple library export has an invalid artifact shape")
+        return cast(AppleLibraryExport, data)
+
     async def _request(
         self,
         method: str,
         path: str,
         *,
         json: Any = None,
-        params: dict[str, Any] | None = None,
+        params: dict[str, Any] | list[tuple[str, str]] | None = None,
         extra_headers: dict[str, str] | None = None,
     ) -> Any:
         """Issue one HTTP request with retry-on-5xx and structured-error-on-4xx.

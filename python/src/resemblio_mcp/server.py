@@ -1,6 +1,6 @@
 """Resemblio MCP server (Python) stdio entrypoint.
 
-Advertises two tools (``resemblio_extract``, ``resemblio_list_extractions``)
+Advertises four tools (``resemblio_extract``, ``resemblio_list_extractions``, ``resemblio_get_library_manifest``, ``resemblio_get_library_export``)
 over stdio per the MCP spec. Auth is provided at process start via the
 ``RESEMBLIO_API_KEY`` environment variable or the ``--api-key <value>``
 command-line flag.
@@ -26,13 +26,19 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from resemblio_mcp.client import ResemblioClient
+from resemblio_mcp.client import ResemblioApiError, ResemblioClient
 from resemblio_mcp.tools import (
     EXTRACT_INPUT_SCHEMA,
     EXTRACT_TOOL_NAME,
+    GET_LIBRARY_EXPORT_INPUT_SCHEMA,
+    GET_LIBRARY_EXPORT_TOOL_NAME,
+    GET_LIBRARY_MANIFEST_INPUT_SCHEMA,
+    GET_LIBRARY_MANIFEST_TOOL_NAME,
     LIST_INPUT_SCHEMA,
     LIST_TOOL_NAME,
     run_extract,
+    run_get_library_export,
+    run_get_library_manifest,
     run_list_extractions,
 )
 
@@ -92,22 +98,41 @@ def _to_text_content(payload: Any) -> list[dict[str, Any]]:
 
 
 async def _serve(client: ResemblioClient) -> None:
-    """Wire the two tool handlers to an MCP stdio server.
+    """Wire all tool handlers to an MCP stdio server.
 
     Imports the SDK lazily so test environments without the ``mcp``
     package installed can still import this module to exercise
     :func:`parse_args` / :func:`resolve_config`.
     """
-    # Lazy import: keeps the test surface clean when `mcp` isn't installed.
-    from mcp.server import Server  # type: ignore[import-not-found]
     from mcp.server.stdio import stdio_server  # type: ignore[import-not-found]
-    from mcp.types import TextContent, Tool  # type: ignore[import-not-found]
 
-    server: Server = Server("resemblio-mcp")
+    server = build_server(client)
 
-    @server.list_tools()
-    async def _list_tools() -> list[Tool]:
-        return [
+    async with stdio_server() as (read_stream, write_stream):
+        await server.run(read_stream, write_stream, server.create_initialization_options())
+
+
+def build_server(client: ResemblioClient):
+    """Build the registered MCP server used by stdio and protocol tests.
+
+    The SDK import remains lazy so configuration tests can import this module
+    even when the optional runtime dependency has not been installed.
+    """
+    from mcp.server import Server  # type: ignore[import-not-found]
+    from mcp.types import (  # type: ignore[import-not-found]
+        CallToolRequestParams,
+        CallToolResult,
+        ListToolsResult,
+        PaginatedRequestParams,
+        TextContent,
+        Tool,
+    )
+
+    async def _list_tools(
+        _context: Any,
+        _params: PaginatedRequestParams | None,
+    ) -> ListToolsResult:
+        return ListToolsResult(tools=[
             Tool(
                 name=EXTRACT_TOOL_NAME,
                 description=(
@@ -126,24 +151,73 @@ async def _serve(client: ResemblioClient) -> None:
                 ),
                 inputSchema=LIST_INPUT_SCHEMA,
             ),
-        ]
+            Tool(
+                name=GET_LIBRARY_MANIFEST_TOOL_NAME,
+                description=(
+                    "Retrieve the verified canonical Apple library manifest. This read-only "
+                    "tool is free and returns the API artifact unchanged, including its "
+                    "record set, facets, version, and SHA-256 digest."
+                ),
+                inputSchema=GET_LIBRARY_MANIFEST_INPUT_SCHEMA,
+            ),
+            Tool(
+                name=GET_LIBRARY_EXPORT_TOOL_NAME,
+                description=(
+                    "Retrieve a complete Apple DTCG export or a classification or record slice. "
+                    "This read-only tool is free and returns the API artifact unchanged. "
+                    "Requires an entitled Resemblio API key."
+                ),
+                inputSchema=GET_LIBRARY_EXPORT_INPUT_SCHEMA,
+            ),
+        ])
 
-    @server.call_tool()
-    async def _call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+    async def _call_tool(
+        _context: Any,
+        params: CallToolRequestParams,
+    ) -> CallToolResult:
+        name = params.name
+        arguments = params.arguments or {}
         try:
             if name == EXTRACT_TOOL_NAME:
                 result = await run_extract(client, arguments or {})
-                return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+                return CallToolResult(
+                    content=[TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+                )
             if name == LIST_TOOL_NAME:
                 result = await run_list_extractions(client, arguments or {})
-                return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+                return CallToolResult(
+                    content=[TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+                )
+            if name == GET_LIBRARY_MANIFEST_TOOL_NAME:
+                result = await run_get_library_manifest(client, arguments or {})
+                return CallToolResult(
+                    content=[TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+                )
+            if name == GET_LIBRARY_EXPORT_TOOL_NAME:
+                result = await run_get_library_export(client, arguments or {})
+                return CallToolResult(
+                    content=[TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+                )
+            return CallToolResult(
+                isError=True,
+                content=[TextContent(type="text", text=f"Unknown tool: {name}")],
+            )
         except Exception as exc:  # noqa: BLE001 - surface every error to the MCP client
             logger.exception("tool call failed: %s", name)
-            return [TextContent(type="text", text=f"{type(exc).__name__}: {exc}")]
+            if isinstance(exc, ResemblioApiError):
+                message = f"{exc}: {json.dumps(exc.body, separators=(',', ':'))}"
+            else:
+                message = f"{type(exc).__name__}: {exc}"
+            return CallToolResult(
+                isError=True,
+                content=[TextContent(type="text", text=message)],
+            )
 
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, server.create_initialization_options())
+    return Server(
+        "resemblio-mcp",
+        on_list_tools=_list_tools,
+        on_call_tool=_call_tool,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> None:
