@@ -11,7 +11,7 @@ import pytest
 from mcp import ClientSession
 from mcp.shared.memory import create_client_server_memory_streams
 
-from resemblio_mcp.client import ResemblioApiError, ResemblioClient
+from resemblio_mcp.client import ResemblioApiError, ResemblioClient, validate_apple_library_export_response
 from resemblio_mcp.server import build_server
 from resemblio_mcp.tools import (
     GET_LIBRARY_EXPORT_INPUT_SCHEMA,
@@ -62,17 +62,29 @@ def canonical_records() -> list[dict[str, Any]]:
 def export_artifact(records: list[dict[str, Any]], selection: str) -> dict[str, Any]:
     """Construct a representative serialized API artifact around canonical records."""
     return {
-        "schema_version": "resemblio_apple_export_product_v1",
-        "artifact_id": "apple-system-dtcg",
-        "artifact_version": "2026.10.2",
-        "artifact_sha256": "a" * 64,
-        "selection": {"kind": selection, "selected_record_count": len(records)},
-        "token_document": {
-            "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
-            "color": {"bg": {"$type": "color", "$value": {"colorSpace": "srgb", "components": [1, 1, 1], "alpha": 1}}},
+        "tokens": {"color": {"bg": {"$type": "color", "$value": {"colorSpace": "srgb", "components": [1, 1, 1], "alpha": 1}}}},
+        "manifest": {
+            "schema_version": "resemblio_apple_export_manifest_v2",
+            "artifact_id": "apple-system-dtcg",
+            "artifact_version": "2026.10.14",
+            "exporter_version": "2.0.0",
+            "normalization_policy_version": "dtcg_2025_10_public_safe_v3",
+            "reproducibility": {"mode": "deterministic"},
+            "artifact_fingerprint": "a" * 64,
+            "manifest_sha256": "b" * 64,
+            "source_manifest_reference": {"artifact_sha256": "c" * 64},
+            "tokens": {
+                "path": "tokens/design.tokens.json",
+                "media_type": "application/design-tokens+json",
+                "schema_url": "https://www.designtokens.org/schemas/2025.10/format.json",
+                "sha256": "d" * 64, "count": 1, "domains": ["color"],
+            },
+            "selection": {"kind": selection, "selected_record_count": len(records)},
+            "attribution": {},
+            "scrub_policy": {},
+            "records": records,
+            "dependencies": [],
         },
-        "records": records,
-        "dependencies": [],
     }
 
 
@@ -85,6 +97,84 @@ def make_client(handler, *, max_retries: int = 0) -> ResemblioClient:
         backoff_s=0,
         transport=httpx.MockTransport(handler),
     )
+
+
+def test_separate_values_preserve_mapping_identity():
+    """Validation preserves the API data and both named values by identity."""
+    data = export_artifact([], "complete")
+    result = validate_apple_library_export_response({"schema_version": 2, "data": data})
+    assert result is data
+    assert result["tokens"] is data["tokens"]
+    assert result["manifest"] is data["manifest"]
+    assert set(result) == {"tokens", "manifest"}
+
+
+@pytest.mark.parametrize("field,value", [
+    ("schema_version", "resemblio_apple_export_product_v1"),
+    ("artifact_fingerprint", "A" * 64), ("manifest_sha256", "bad-hash"),
+    ("records", [None]), ("dependencies", [None]), ("selection", None),
+    ("reproducibility", None), ("artifact_version", ""),
+])
+def test_invalid_manifest_fields_fail(field: str, value: Any):
+    """The MCP boundary rejects malformed identity and manifest shape."""
+    data = export_artifact([], "complete")
+    data["manifest"][field] = value
+    with pytest.raises(ValueError):
+        validate_apple_library_export_response({"schema_version": 2, "data": data})
+
+
+@pytest.mark.parametrize("field,value", [
+    ("path", "design.tokens.json"), ("media_type", "application/json"),
+    ("sha256", "A" * 64), ("schema_url", ""), ("count", -1),
+    ("count", True), ("domains", [None]),
+])
+def test_invalid_token_descriptor_fields_fail(field: str, value: Any):
+    """Filename, media type, and token descriptor hashes are contractual."""
+    data = export_artifact([], "complete")
+    data["manifest"]["tokens"][field] = value
+    with pytest.raises(ValueError):
+        validate_apple_library_export_response({"schema_version": 2, "data": data})
+
+
+def test_removed_envelope_and_malformed_named_values_fail():
+    """Only the new separated data contract is accepted."""
+    valid = export_artifact([], "complete")
+    for data in (valid["manifest"], {"tokens": None, "manifest": valid["manifest"]},
+                 {"tokens": valid["tokens"], "manifest": None},
+                 {"tokens": [], "manifest": valid["manifest"]}):
+        with pytest.raises(ValueError):
+            validate_apple_library_export_response({"schema_version": 2, "data": data})
+
+
+def test_invalid_nested_reference_hash_fails():
+    """Source references must carry valid lowercase hexadecimal digests."""
+    data = export_artifact([], "complete")
+    data["manifest"]["source_manifest_reference"]["artifact_sha256"] = "bad"
+    with pytest.raises(ValueError):
+        validate_apple_library_export_response({"schema_version": 2, "data": data})
+
+
+@pytest.mark.parametrize("field", [
+    "schema_version", "artifact_id", "artifact_version", "exporter_version",
+    "normalization_policy_version", "reproducibility", "artifact_fingerprint",
+    "manifest_sha256", "source_manifest_reference", "tokens", "selection",
+    "attribution", "scrub_policy", "records", "dependencies",
+])
+def test_missing_manifest_field_fails(field: str):
+    """All required manifest fields must survive the API boundary."""
+    data = export_artifact([], "complete")
+    del data["manifest"][field]
+    with pytest.raises(ValueError):
+        validate_apple_library_export_response({"schema_version": 2, "data": data})
+
+
+@pytest.mark.parametrize("field", ["path", "media_type", "schema_url", "sha256", "count", "domains"])
+def test_missing_token_descriptor_field_fails(field: str):
+    """Incomplete token descriptors cannot identify the portable document."""
+    data = export_artifact([], "complete")
+    del data["manifest"]["tokens"][field]
+    with pytest.raises(ValueError):
+        validate_apple_library_export_response({"schema_version": 2, "data": data})
 
 
 def test_selector_schema_matches_shared_typescript_contract():
@@ -166,8 +256,8 @@ async def test_complete_export_retrieves_all_41_api_records_unchanged():
 
     result = await run_get_library_export(make_client(handler), {"selection": "complete"})
     assert result == artifact
-    assert result["records"] == records
-    assert result["selection"]["selected_record_count"] == 41
+    assert result["manifest"]["records"] == records
+    assert result["manifest"]["selection"]["selected_record_count"] == 41
 
 
 @pytest.mark.asyncio
@@ -185,8 +275,8 @@ async def test_classification_export_retrieves_component_slice_unchanged():
         {"selection": "classification", "classification": "component"}
     )
     assert result == artifact
-    assert len(result["records"]) == 17
-    assert all(record["classification"] == "component" for record in result["records"])
+    assert len(result["manifest"]["records"]) == 17
+    assert all(record["classification"] == "component" for record in result["manifest"]["records"])
 
 
 def test_record_selector_deduplicates_and_sorts_ids():

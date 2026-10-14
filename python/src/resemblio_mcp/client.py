@@ -60,20 +60,48 @@ AppleSystemManifestPayload = TypedDict(
 APPLE_SYSTEM_MANIFEST_PATH = "/v1/library/manifests/apple"
 APPLE_LIBRARY_EXPORT_PATH = "/v1/apple/exports/dtcg"
 APPLE_SYSTEM_MANIFEST_SCHEMA = "resemblio_apple_system_manifest_v1"
+APPLE_LIBRARY_EXPORT_MANIFEST_SCHEMA = "resemblio_apple_export_manifest_v2"
+APPLE_LIBRARY_EXPORT_TOKEN_PATH = "tokens/design.tokens.json"
+APPLE_LIBRARY_EXPORT_MEDIA_TYPE = "application/design-tokens+json"
 SHA256_HEX_RE = re.compile(r"^[a-f0-9]{64}$")
 
 
-class AppleLibraryExport(TypedDict):
-    """Typed top-level DTCG export fields, preserving future API fields."""
+class AppleLibraryExportTokenDescriptor(TypedDict):
+    """Integrity descriptor for the pure DTCG token document."""
 
-    schema_version: Literal["resemblio_apple_export_product_v1"]
+    path: Literal["tokens/design.tokens.json"]
+    media_type: Literal["application/design-tokens+json"]
+    schema_url: str
+    sha256: str
+    count: int
+    domains: list[str]
+
+
+class AppleLibraryExportManifest(TypedDict):
+    """API-owned metadata, selection, and artifact identity."""
+
+    schema_version: Literal["resemblio_apple_export_manifest_v2"]
     artifact_id: Literal["apple-system-dtcg"]
     artifact_version: str
-    artifact_sha256: str
+    exporter_version: str
+    normalization_policy_version: str
+    reproducibility: dict[str, Any]
+    artifact_fingerprint: str
+    manifest_sha256: str
+    source_manifest_reference: dict[str, Any]
+    tokens: AppleLibraryExportTokenDescriptor
     selection: dict[str, Any]
-    token_document: dict[str, Any]
+    attribution: dict[str, Any]
+    scrub_policy: dict[str, Any]
     records: list[dict[str, Any]]
     dependencies: list[dict[str, Any]]
+
+
+class AppleLibraryExport(TypedDict):
+    """Separate API-owned values returned unchanged by MCP."""
+
+    tokens: dict[str, Any]
+    manifest: AppleLibraryExportManifest
 
 
 class AppleLibraryExportEnvelope(TypedDict):
@@ -145,6 +173,60 @@ def validate_apple_system_manifest(payload: Any) -> AppleSystemManifestPayload:
     if payload["artifact_sha256"] != expected_digest:
         raise ValueError("Apple system manifest artifact_sha256 does not match its body")
     return cast(AppleSystemManifestPayload, payload)
+
+
+def _validate_export_hashes(value: Any, path: str) -> None:
+    """Check named digest formats recursively without recomputing identity."""
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_export_hashes(item, f"{path}[{index}]")
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            if key == "sha256" or key.endswith("_sha256") or key == "artifact_fingerprint":
+                if not isinstance(item, str) or SHA256_HEX_RE.fullmatch(item) is None:
+                    raise ValueError(f"Apple library export has invalid {path}.{key}")
+            else:
+                _validate_export_hashes(item, f"{path}.{key}")
+
+
+def validate_apple_library_export_response(payload: Any) -> AppleLibraryExport:
+    """Validate shape and hashes while preserving both API-owned mappings.
+
+    The API owns full DTCG schema validation and canonical hashing. MCP
+    checks delivery requirements without rebuilding tokens or metadata.
+    """
+    if not isinstance(payload, dict) or type(payload.get("schema_version")) is not int or payload["schema_version"] != 2:
+        raise ValueError("Apple library export response has an unsupported schema_version")
+    data = payload.get("data")
+    if not isinstance(data, dict) or not isinstance(data.get("tokens"), dict) or not isinstance(data.get("manifest"), dict):
+        raise ValueError("Apple library export response has invalid tokens or manifest")
+    manifest = data["manifest"]
+    if manifest.get("schema_version") != APPLE_LIBRARY_EXPORT_MANIFEST_SCHEMA or manifest.get("artifact_id") != "apple-system-dtcg":
+        raise ValueError("Apple library export has an invalid manifest identity")
+    for field in ("artifact_version", "exporter_version", "normalization_policy_version", "artifact_fingerprint", "manifest_sha256"):
+        value = manifest.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"Apple library export has invalid manifest.{field}")
+    for field in ("reproducibility", "source_manifest_reference", "selection", "attribution", "scrub_policy"):
+        if not isinstance(manifest.get(field), dict):
+            raise ValueError(f"Apple library export has invalid manifest.{field}")
+    for field in ("records", "dependencies"):
+        if not isinstance(manifest.get(field), list) or not all(isinstance(item, dict) for item in manifest[field]):
+            raise ValueError(f"Apple library export has invalid manifest.{field}")
+    tokens = manifest.get("tokens")
+    if (
+        not isinstance(tokens, dict)
+        or tokens.get("path") != APPLE_LIBRARY_EXPORT_TOKEN_PATH
+        or tokens.get("media_type") != APPLE_LIBRARY_EXPORT_MEDIA_TYPE
+        or not isinstance(tokens.get("schema_url"), str) or not tokens["schema_url"].strip()
+        or not isinstance(tokens.get("sha256"), str) or SHA256_HEX_RE.fullmatch(tokens["sha256"]) is None
+        or type(tokens.get("count")) is not int or tokens["count"] < 0
+        or not isinstance(tokens.get("domains"), list)
+        or not all(isinstance(domain, str) and domain.strip() for domain in tokens["domains"])
+    ):
+        raise ValueError("Apple library export has an invalid token descriptor")
+    _validate_export_hashes(manifest, "manifest")
+    return cast(AppleLibraryExport, data)
 
 
 class ExtractionListItem(BaseModel):
@@ -349,24 +431,7 @@ class ResemblioClient:
         elif selection["selection"] == "record":
             params.extend(("record", record_id) for record_id in selection["record_ids"])
         envelope = await self._request("GET", APPLE_LIBRARY_EXPORT_PATH, params=params)
-        if not isinstance(envelope, dict) or envelope.get("schema_version") != 2:
-            raise ValueError("Apple library export response has an unsupported schema_version")
-        if not isinstance(envelope.get("data"), dict):
-            raise ValueError("Apple library export response has invalid data")
-        data = envelope["data"]
-        if (
-            data.get("schema_version") != "resemblio_apple_export_product_v1"
-            or data.get("artifact_id") != "apple-system-dtcg"
-            or not isinstance(data.get("artifact_version"), str)
-            or not isinstance(data.get("artifact_sha256"), str)
-            or SHA256_HEX_RE.fullmatch(data["artifact_sha256"]) is None
-            or not isinstance(data.get("selection"), dict)
-            or not isinstance(data.get("token_document"), dict)
-            or not isinstance(data.get("records"), list)
-            or not isinstance(data.get("dependencies"), list)
-        ):
-            raise ValueError("Apple library export has an invalid artifact shape")
-        return cast(AppleLibraryExport, data)
+        return validate_apple_library_export_response(envelope)
 
     async def _request(
         self,

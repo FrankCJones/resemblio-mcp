@@ -8,6 +8,7 @@ import {
   ResemblioApiError,
   ResemblioClient,
   type AppleLibraryExport,
+  validateAppleLibraryExportResponse,
 } from '../src/client.js';
 import { getLibraryExportTool, normalizeLibraryExportInput, runGetLibraryExport } from '../src/tools/get_library_export.js';
 import { buildServer } from '../src/index.js';
@@ -61,14 +62,29 @@ async function manifestRecords(): Promise<Record<string, unknown>[]> {
 
 function exportArtifact(records: Record<string, unknown>[], selection: string): AppleLibraryExport {
   return {
-    schema_version: 'resemblio_apple_export_product_v1',
-    artifact_id: 'apple-system-dtcg',
-    artifact_version: '2026.10.2',
-    artifact_sha256: 'a'.repeat(64),
-    selection: { kind: selection, selected_record_count: records.length },
-    token_document: { $schema: 'https://www.designtokens.org/schemas/2025.10/format.json', color: { bg: { $type: 'color', $value: { colorSpace: 'srgb', components: [1, 1, 1], alpha: 1 } } } },
-    records,
-    dependencies: [],
+    tokens: { color: { bg: { $type: 'color', $value: { colorSpace: 'srgb', components: [1, 1, 1], alpha: 1 } } } },
+    manifest: {
+      schema_version: 'resemblio_apple_export_manifest_v2',
+      artifact_id: 'apple-system-dtcg',
+      artifact_version: '2026.10.14',
+      exporter_version: '2.0.0',
+      normalization_policy_version: 'dtcg_2025_10_public_safe_v3',
+      reproducibility: { mode: 'deterministic' },
+      artifact_fingerprint: 'a'.repeat(64),
+      manifest_sha256: 'b'.repeat(64),
+      source_manifest_reference: { artifact_sha256: 'c'.repeat(64) },
+      tokens: {
+        path: 'tokens/design.tokens.json',
+        media_type: 'application/design-tokens+json',
+        schema_url: 'https://www.designtokens.org/schemas/2025.10/format.json',
+        sha256: 'd'.repeat(64), count: 1, domains: ['color'],
+      },
+      selection: { kind: selection, selected_record_count: records.length },
+      attribution: {},
+      scrub_policy: {},
+      records,
+      dependencies: [],
+    },
   };
 }
 
@@ -77,6 +93,71 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 describe('resemblio_get_library_export', () => {
+  it('preserves the two API-owned values and object identity without reconstruction', () => {
+    const data = exportArtifact([], 'complete');
+    const result = validateAppleLibraryExportResponse({ schema_version: 2, data });
+    expect(result).toBe(data);
+    expect(result.tokens).toBe(data.tokens);
+    expect(result.manifest).toBe(data.manifest);
+    expect(Object.keys(result)).toEqual(['tokens', 'manifest']);
+  });
+
+  it.each([
+    ['schema_version', 'resemblio_apple_export_product_v1'],
+    ['artifact_fingerprint', 'A'.repeat(64)],
+    ['manifest_sha256', 'bad-hash'],
+    ['records', [null]],
+    ['dependencies', [null]],
+    ['selection', null],
+    ['reproducibility', null],
+    ['artifact_version', ''],
+  ])('rejects invalid manifest %s', (field, value) => {
+    const data = exportArtifact([], 'complete');
+    (data.manifest as Record<string, unknown>)[field] = value;
+    expect(() => validateAppleLibraryExportResponse({ schema_version: 2, data })).toThrow();
+  });
+
+  it.each([
+    ['path', 'design.tokens.json'], ['media_type', 'application/json'],
+    ['sha256', 'A'.repeat(64)], ['schema_url', ''], ['count', -1],
+    ['domains', [null]],
+  ])('rejects invalid token descriptor %s', (field, value) => {
+    const data = exportArtifact([], 'complete');
+    (data.manifest.tokens as unknown as Record<string, unknown>)[field] = value;
+    expect(() => validateAppleLibraryExportResponse({ schema_version: 2, data })).toThrow();
+  });
+
+  it('rejects the removed proprietary envelope and malformed named values', () => {
+    const valid = exportArtifact([], 'complete');
+    for (const data of [valid.manifest, { tokens: null, manifest: valid.manifest },
+      { tokens: valid.tokens, manifest: null }, { tokens: [], manifest: valid.manifest }]) {
+      expect(() => validateAppleLibraryExportResponse({ schema_version: 2, data })).toThrow();
+    }
+  });
+
+  it('rejects malformed hashes nested in source references', () => {
+    const data = exportArtifact([], 'complete');
+    data.manifest.source_manifest_reference.artifact_sha256 = 'bad';
+    expect(() => validateAppleLibraryExportResponse({ schema_version: 2, data })).toThrow();
+  });
+
+  it.each([
+    'schema_version', 'artifact_id', 'artifact_version', 'exporter_version',
+    'normalization_policy_version', 'reproducibility', 'artifact_fingerprint',
+    'manifest_sha256', 'source_manifest_reference', 'tokens', 'selection',
+    'attribution', 'scrub_policy', 'records', 'dependencies',
+  ])('rejects missing required manifest field %s', (field) => {
+    const data = exportArtifact([], 'complete');
+    delete (data.manifest as Record<string, unknown>)[field];
+    expect(() => validateAppleLibraryExportResponse({ schema_version: 2, data })).toThrow();
+  });
+
+  it.each(['path', 'media_type', 'schema_url', 'sha256', 'count', 'domains'])
+    ('rejects missing token descriptor field %s', (field) => {
+      const data = exportArtifact([], 'complete');
+      delete (data.manifest.tokens as unknown as Record<string, unknown>)[field];
+      expect(() => validateAppleLibraryExportResponse({ schema_version: 2, data })).toThrow();
+    });
   it('retrieves exact complete and normalized API artifacts through the registered MCP protocol', async () => {
     const fixture = await exactExportFixture();
     const calls = new Map<string, AppleLibraryExport>([
@@ -136,8 +217,8 @@ describe('resemblio_get_library_export', () => {
     const result = await runGetLibraryExport(client, { selection: 'complete' });
     expect(new URL(String(fetchImpl.mock.calls[0]?.[0])).pathname).toBe(APPLE_LIBRARY_EXPORT_PATH);
     expect(result).toEqual(artifact);
-    expect(result.records).toHaveLength(41);
-    expect(result.selection.selected_record_count).toBe(41);
+    expect(result.manifest.records).toHaveLength(41);
+    expect(result.manifest.selection.selected_record_count).toBe(41);
   });
 
   it('retrieves a classification slice and returns API data unchanged', async () => {
@@ -150,8 +231,8 @@ describe('resemblio_get_library_export', () => {
     expect(requestUrl.searchParams.get('selection')).toBe('classification');
     expect(requestUrl.searchParams.get('classification')).toBe('component');
     expect(result).toEqual(artifact);
-    expect(result.records).toHaveLength(17);
-    expect(result.records.every((record) => record.classification === 'component')).toBe(true);
+    expect(result.manifest.records).toHaveLength(17);
+    expect(result.manifest.records.every((record) => record.classification === 'component')).toBe(true);
   });
 
   it('normalizes duplicate and reordered record IDs before making a request', () => {

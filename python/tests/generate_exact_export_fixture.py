@@ -41,7 +41,7 @@ def build_fixture() -> dict[str, Any]:
         ),
     }
     return {
-        "schema_version": "resemblio_mcp_library_export_fixture_v1",
+        "schema_version": "resemblio_mcp_library_export_fixture_v2",
         "artifacts": {
             name: build_apple_dtcg_export(
                 kind,
