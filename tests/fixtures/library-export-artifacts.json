@@ -749,7 +749,7 @@
           "timestamp_policy": "omitted",
           "serialization": "canonical-json-lf-utf8"
         },
-        "artifact_fingerprint": "a6e66f239321dbe985fcd97d94d27d881af3d94546b7ec4420be234bd87eb693",
+        "artifact_fingerprint": "b2d2b1d31d71d350522b0df3cf536ec90c6cd7254d33f18df1e261c502dd813b",
         "source_manifest_reference": {
           "schema_version": "resemblio_apple_system_manifest_v1",
           "endpoint": "/v1/library/manifests/apple",
@@ -3190,7 +3190,7 @@
           }
         ],
         "dependencies": [],
-        "manifest_sha256": "44bd409229a05a576b8a62ec1dfa11f5d04e00025ea8f26339e594aae50f53ba"
+        "manifest_sha256": "3a09e3ebdb9ac2b364e5f7b6b313f064456100ac427897d772e7d0f9e7f49ff5"
       }
     },
     "classification-foundation": {
@@ -3941,7 +3941,7 @@
           "timestamp_policy": "omitted",
           "serialization": "canonical-json-lf-utf8"
         },
-        "artifact_fingerprint": "b6a3bf9b2b55c446a7fe0b61474fbf808a3b64b8d9659c2d2004393be3af4786",
+        "artifact_fingerprint": "8900002495bc2fec3c58c747ece27f461f5a9629b7d3722ae626891e8db89893",
         "source_manifest_reference": {
           "schema_version": "resemblio_apple_system_manifest_v1",
           "endpoint": "/v1/library/manifests/apple",
@@ -4544,7 +4544,7 @@
           }
         ],
         "dependencies": [],
-        "manifest_sha256": "75e6f58c8a86e309dfdca0d190be5d4848b2915eca54c10b76381c290adb1fe5"
+        "manifest_sha256": "22ebc5d7bbb39fc5bc9ff2236118ff77e700cc5ad85fbdc3a1aa24dc2562e20f"
       }
     },
     "classification-component": {
@@ -5295,7 +5295,7 @@
           "timestamp_policy": "omitted",
           "serialization": "canonical-json-lf-utf8"
         },
-        "artifact_fingerprint": "ad22d30e06b6346e8b551004d7280dad202d1a05ddbf72891dd82cdcbf23ba6a",
+        "artifact_fingerprint": "30c22bffb8ed2088c14bbd9d6610fd9e1645872929e65a8d7d72e52faa5c93c4",
         "source_manifest_reference": {
           "schema_version": "resemblio_apple_system_manifest_v1",
           "endpoint": "/v1/library/manifests/apple",
@@ -7004,7 +7004,7 @@
             }
           }
         ],
-        "manifest_sha256": "33b14a9ad9ffd2cca75a8e5f7b3c96b39fba9924870ffb7ce68c8e4d29eeb9c0"
+        "manifest_sha256": "b06bd29fc208f612768b9f16321ea7f53138acce6b2b9e1846b70982cb123967"
       }
     },
     "classification-composition": {
@@ -7755,7 +7755,7 @@
           "timestamp_policy": "omitted",
           "serialization": "canonical-json-lf-utf8"
         },
-        "artifact_fingerprint": "5d89dfcb9207a3152afc2b668a6d561efe1974457789b5241611bc2dee0e043d",
+        "artifact_fingerprint": "1346c7d0527e943ecc665cd17af8ef7a9c47b281cebbd47812ec1e76a3b1deb7",
         "source_manifest_reference": {
           "schema_version": "resemblio_apple_system_manifest_v1",
           "endpoint": "/v1/library/manifests/apple",
@@ -9442,7 +9442,7 @@
             }
           }
         ],
-        "manifest_sha256": "b3f68748382d52228141d7be71bc19db30d1a800d094bfb022a05b3a0218a742"
+        "manifest_sha256": "50791d05b50106a47f122c7a9bca9d5b893fdd05df0420a502c5ab72697dcfa2"
       }
     },
     "records-normalized": {
@@ -10193,7 +10193,7 @@
           "timestamp_policy": "omitted",
           "serialization": "canonical-json-lf-utf8"
         },
-        "artifact_fingerprint": "4a1ed2aacb60762d3b4c4b8dcd29e434a5a0ed8dce576b6259c1036789d1ade8",
+        "artifact_fingerprint": "d8ead712f834864b530fca5129784dedf803c3093915b9e5ef39da5cabbb957a",
         "source_manifest_reference": {
           "schema_version": "resemblio_apple_system_manifest_v1",
           "endpoint": "/v1/library/manifests/apple",
@@ -10601,7 +10601,7 @@
             }
           }
         ],
-        "manifest_sha256": "5e1aa3d62438afd44be01b8247c3fa4c78f023a2c0f7f55e3dd3913c86ed593d"
+        "manifest_sha256": "4fc1a7ddede3c90e9ef2b57cfb7d8e8c2098075bb9ee6490c28b4d1b44b16316"
       }
     }
   }
