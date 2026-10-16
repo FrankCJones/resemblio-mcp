@@ -84,7 +84,7 @@ export function resolveConfig(
  */
 export function buildServer(client: ResemblioClient): Server {
   const server = new Server(
-    { name: 'resemblio-mcp-server', version: '0.1.0' },
+    { name: 'resemblio-mcp-server', version: '0.2.0' },
     { capabilities: { tools: {} } },
   );
 

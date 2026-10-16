@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "resemblio-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Model Context Protocol server for Resemblio - extract trademark-stripped, brand-faithful, code-bearing design systems from any URL. Inspirado, no copiado."
 readme = "README.md"
 license = { text = "MIT" }
@@ -42,6 +42,9 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/resemblio_mcp"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["/tests", "/.gitignore"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
