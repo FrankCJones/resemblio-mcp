@@ -25,6 +25,29 @@ describe('package publication workflows', () => {
     expect(npmWorkflow).toContain('Tag does not match package version');
   });
 
+  it('limits the npm bootstrap to version 0.2.0', () => {
+    expect(npmWorkflow).toContain("BOOTSTRAP_VERSION: '0.2.0'");
+    expect(npmWorkflow).toContain('Bootstrap version mismatch');
+  });
+
+  it('exposes the temporary npm credential only to the publish step', () => {
+    const publishStepMarker = '- name: Publish bootstrap release';
+    const [beforePublish, publishStep] = npmWorkflow.split(publishStepMarker);
+
+    expect(beforePublish).not.toContain('NODE_AUTH_TOKEN');
+    expect(publishStep).toContain(
+      'NODE_AUTH_TOKEN: ${{ secrets.RESEMBLIO_NPM_BOOTSTRAP_TOKEN }}',
+    );
+    expect(publishStep).toContain('Missing npm bootstrap token');
+  });
+
+  it('keeps the bootstrap package inspection and provenance controls', () => {
+    expect(npmWorkflow).toContain('environment: npm-publish');
+    expect(npmWorkflow).toContain('id-token: write');
+    expect(npmWorkflow).toContain('npm pack --dry-run');
+    expect(npmWorkflow).toContain('npm publish --provenance --access public');
+  });
+
   it('requires the PyPI tag to match pyproject.toml', () => {
     expect(pythonWorkflow).toContain("tomllib.load(open('python/pyproject.toml', 'rb'))");
     expect(pythonWorkflow).toContain('Tag does not match Python package version');
