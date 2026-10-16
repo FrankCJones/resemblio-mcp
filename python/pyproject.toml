@@ -44,7 +44,7 @@ dev = [
 packages = ["src/resemblio_mcp"]
 
 [tool.hatch.build.targets.sdist]
-exclude = ["/tests", "/.gitignore"]
+only-include = ["src/resemblio_mcp", "README.md", "LICENSE", "pyproject.toml"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
