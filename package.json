@@ -32,7 +32,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.14.1"
   },
   "scripts": {
     "build": "tsc",
@@ -43,12 +43,15 @@
     "prepublishOnly": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@modelcontextprotocol/sdk": "1.32.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.5.0",
-    "vitest": "^2.0.0"
+    "vitest": "4.1.11"
+  },
+  "overrides": {
+    "@hono/node-server": "1.19.17"
   },
   "publishConfig": {
     "access": "public",

@@ -109,6 +109,8 @@ Equivalent CLI flags: `--api-key`, `--base-url`.
 
 ## Development
 
+Development requires Node.js 20 or newer. The published server runtime supports Node.js 18.14.1 or newer.
+
 ```bash
 npm install
 npm run typecheck
