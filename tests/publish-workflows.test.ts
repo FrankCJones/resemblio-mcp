@@ -25,27 +25,19 @@ describe('package publication workflows', () => {
     expect(npmWorkflow).toContain('Tag does not match package version');
   });
 
-  it('limits the npm bootstrap to version 0.2.0', () => {
-    expect(npmWorkflow).toContain("BOOTSTRAP_VERSION: '0.2.0'");
-    expect(npmWorkflow).toContain('Bootstrap version mismatch');
+  it('uses tokenless npm trusted publishing', () => {
+    expect(npmWorkflow).not.toContain('NODE_AUTH_TOKEN');
+    expect(npmWorkflow).not.toContain('RESEMBLIO_NPM_BOOTSTRAP_TOKEN');
+    expect(npmWorkflow).toContain("node-version: '24'");
+    expect(npmWorkflow).toContain('npm install -g npm@latest');
+    expect(npmWorkflow).toContain('Publish through npm trusted publishing');
   });
 
-  it('exposes the temporary npm credential only to the publish step', () => {
-    const publishStepMarker = '- name: Publish bootstrap release';
-    const [beforePublish, publishStep] = npmWorkflow.split(publishStepMarker);
-
-    expect(beforePublish).not.toContain('NODE_AUTH_TOKEN');
-    expect(publishStep).toContain(
-      'NODE_AUTH_TOKEN: ${{ secrets.RESEMBLIO_NPM_BOOTSTRAP_TOKEN }}',
-    );
-    expect(publishStep).toContain('Missing npm bootstrap token');
-  });
-
-  it('keeps the bootstrap package inspection and provenance controls', () => {
+  it('keeps package inspection and trusted-publishing controls', () => {
     expect(npmWorkflow).toContain('environment: npm-publish');
     expect(npmWorkflow).toContain('id-token: write');
-    expect(npmWorkflow).toContain('npm pack --dry-run');
-    expect(npmWorkflow).toContain('npm publish --provenance --access public');
+    expect(npmWorkflow).toContain('npm_config_dry_run=true npm pack');
+    expect(npmWorkflow).toContain('run: npm publish');
   });
 
   it('requires the PyPI tag to match pyproject.toml', () => {

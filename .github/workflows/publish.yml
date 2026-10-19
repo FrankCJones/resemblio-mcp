@@ -17,7 +17,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify approved release identity
         env:
-          BOOTSTRAP_VERSION: '0.2.0'
           EXPECTED_RELEASE_SHA: ${{ vars.RESEMBLIO_MCP_RELEASE_SHA }}
           RELEASE_SHA: ${{ github.sha }}
           RELEASE_REF: ${{ github.ref_name }}
@@ -25,20 +24,17 @@ jobs:
           test -n "$EXPECTED_RELEASE_SHA" || { echo "Missing approved release SHA"; exit 1; }
           test "$RELEASE_SHA" = "$EXPECTED_RELEASE_SHA" || { echo "Release SHA is not approved"; exit 1; }
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          test "$PACKAGE_VERSION" = "$BOOTSTRAP_VERSION" || { echo "Bootstrap version mismatch"; exit 1; }
           test "$RELEASE_REF" = "v${PACKAGE_VERSION}" || { echo "Tag does not match package version"; exit 1; }
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+      - name: Install trusted-publishing npm client
+        run: npm install -g npm@latest
       - run: npm ci
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
-      - run: npm pack --dry-run
-      - name: Publish bootstrap release
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.RESEMBLIO_NPM_BOOTSTRAP_TOKEN }}
-        run: |
-          test -n "$NODE_AUTH_TOKEN" || { echo "Missing npm bootstrap token"; exit 1; }
-          npm publish --provenance --access public
+      - run: npm_config_dry_run=true npm pack
+      - name: Publish through npm trusted publishing
+        run: npm publish
