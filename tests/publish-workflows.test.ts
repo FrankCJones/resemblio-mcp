@@ -20,8 +20,10 @@ describe('package publication workflows', () => {
     expect(workflow).toContain('Release SHA is not approved');
   });
 
-  it('requires the npm tag to match package.json', () => {
+  it('uses an npm-specific tag that matches package.json', () => {
+    expect(npmWorkflow).toContain("- 'npm-v*.*.*'");
     expect(npmWorkflow).toContain("require('./package.json').version");
+    expect(npmWorkflow).toContain('npm-v${PACKAGE_VERSION}');
     expect(npmWorkflow).toContain('Tag does not match package version');
   });
 

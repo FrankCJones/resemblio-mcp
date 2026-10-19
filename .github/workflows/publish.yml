@@ -3,7 +3,7 @@ name: Publish to npm
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'npm-v*.*.*'
 
 permissions:
   id-token: write
@@ -24,7 +24,7 @@ jobs:
           test -n "$EXPECTED_RELEASE_SHA" || { echo "Missing approved release SHA"; exit 1; }
           test "$RELEASE_SHA" = "$EXPECTED_RELEASE_SHA" || { echo "Release SHA is not approved"; exit 1; }
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          test "$RELEASE_REF" = "v${PACKAGE_VERSION}" || { echo "Tag does not match package version"; exit 1; }
+          test "$RELEASE_REF" = "npm-v${PACKAGE_VERSION}" || { echo "Tag does not match package version"; exit 1; }
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
