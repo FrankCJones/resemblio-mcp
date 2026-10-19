@@ -7,7 +7,7 @@ import { runGetLibraryManifest } from '../src/tools/get_library_manifest.js';
 const KNOWN_ARTIFACT_SHA256 = '789cb9743f6b84ff5274ad915b6fc89cf5e76d4ec0d8bc52db30b3a07d95b547';
 
 async function canonicalArtifact(): Promise<Record<string, unknown>> {
-  const text = await readFile(new URL('../../api/app/data/apple_system_manifest.json', import.meta.url), 'utf8');
+  const text = await readFile(new URL('./fixtures/apple-system-manifest.json', import.meta.url), 'utf8');
   return JSON.parse(text) as Record<string, unknown>;
 }
 

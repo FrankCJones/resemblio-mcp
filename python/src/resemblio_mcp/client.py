@@ -16,8 +16,7 @@ Retry policy: transient HTTP failures (network errors and 5xx
 responses) retry up to ``max_retries`` times with exponential backoff.
 4xx responses are NOT retried; they raise :class:`ResemblioApiError`
 because the customer needs to see them (insufficient credit, invalid
-URL, spend cap, etc.). Mirrors the retry posture of
-``projects/Resemblio/code/api/app/extractor_bridge.py``.
+URL, spend cap, etc.). This matches the public API's retry posture.
 """
 from __future__ import annotations
 
@@ -232,7 +231,7 @@ def validate_apple_library_export_response(payload: Any) -> AppleLibraryExport:
 class ExtractionListItem(BaseModel):
     """Compact extraction-history row returned by ``GET /v1/extractions``.
 
-    Matches ``ExtractionListItem`` in ``code/api/app/schemas.py``.
+    Matches the extraction list-item shape in the public REST API contract.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -301,8 +300,7 @@ class ExtractionResponse(BaseModel):
 class ExtractionCreateRequest(BaseModel):
     """Request body for ``POST /v1/extractions``.
 
-    ``private`` defaults to False (public extraction, $5/call per the
-    pricing table in ``projects/Resemblio/CLAUDE.md``).
+    ``private`` defaults to False and requests a public extraction.
     """
 
     url: str
@@ -329,7 +327,7 @@ class ResemblioClient:
     Construction is pure (no network call); all methods are async and
     idempotent except :meth:`create_extraction`, which charges credits
     server-side. ``create_extraction`` accepts an optional idempotency
-    key that the API honors per ``code/api/app/idempotency.py``.
+    key honored by the public API.
     """
 
     def __init__(

@@ -1,13 +1,16 @@
 """Generate the exact API export artifacts used by MCP protocol tests.
 
-This deterministic test utility imports the API's pure artifact builder and
-writes the resulting JSON fixture without making network calls.
+This deterministic maintenance utility imports the API's pure artifact builder
+from an explicitly supplied checkout and writes the resulting JSON fixture
+without making network calls. Release tests use the checked-in fixture and its
+integrity-pinned provenance, so a standalone MCP checkout remains self-contained.
 
 Run:
-    python python/tests/generate_exact_export_fixture.py
+    python python/tests/generate_exact_export_fixture.py PATH_TO_API_CHECKOUT
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -22,11 +25,13 @@ FIXTURE_PATH: Final = (
 )
 
 
-def build_fixture() -> dict[str, Any]:
-    """Build the five checkpoint selections from the API implementation."""
+def build_fixture(api_root: Path) -> dict[str, Any]:
+    """Build five selections from an explicit API checkout without network use."""
 
-    api_root = Path(__file__).resolve().parents[3] / "api"
-    sys.path.insert(0, str(api_root))
+    resolved_api_root = api_root.resolve()
+    if not (resolved_api_root / "app" / "apple_export_product.py").is_file():
+        raise FileNotFoundError("API checkout does not contain app/apple_export_product.py")
+    sys.path.insert(0, str(resolved_api_root))
     from app.apple_export_product import build_apple_dtcg_export
 
     selections: dict[str, tuple[str, str | None, tuple[str, ...]]] = {
@@ -54,10 +59,14 @@ def build_fixture() -> dict[str, Any]:
 
 
 def main() -> None:
-    """Write the deterministic fixture to the shared MCP test directory."""
+    """Parse one API checkout path and rewrite the deterministic fixture."""
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("api_root", type=Path, help="Path to a reviewed Resemblio API checkout")
+    args = parser.parse_args()
 
     FIXTURE_PATH.write_text(
-        json.dumps(build_fixture(), indent=2, ensure_ascii=False) + "\n",
+        json.dumps(build_fixture(args.api_root), indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
 

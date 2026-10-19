@@ -5,9 +5,8 @@
  * the v1 API runs extraction inline, so the tool returns the full
  * manifest envelope plus a small summary block on success.
  *
- * Charges the user's account per the pricing table in
- * `projects/Resemblio/CLAUDE.md > Pricing reference`. Public extraction
- * is $5; private is $10. Default is public.
+ * Charges the user's account according to current Resemblio pricing.
+ * The default extraction is public.
  */
 
 import type { ResemblioClient, ExtractionResponse } from '../client.js';

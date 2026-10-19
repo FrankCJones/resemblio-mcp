@@ -16,8 +16,7 @@
  * retry up to `maxRetries` times with exponential backoff. 4xx responses
  * are NOT retried; they are returned to the caller as `ResemblioApiError`
  * because the customer needs to see them (insufficient credit, invalid URL,
- * spend cap, etc.). Mirrors the retry posture of
- * `projects/Resemblio/code/api/app/extractor_bridge.py`.
+ * spend cap, etc.). This matches the public API's retry posture.
  */
 
 import { createHash } from 'node:crypto';
@@ -255,7 +254,7 @@ export function validateAppleLibraryExportResponse(payload: unknown): AppleLibra
 
 /**
  * Compact extraction-list-item shape returned by GET /v1/extractions.
- * Matches `ExtractionListItem` in `code/api/app/schemas.py`.
+ * Matches the extraction list-item shape in the public REST API contract.
  */
 export interface ExtractionListItem {
   id: number;
@@ -386,8 +385,7 @@ export class ResemblioClient {
    * synchronously (the v1 extractor is sync; no polling needed).
    *
    * Optional `idempotencyKey` lets a retried call within the API's TTL
-   * window replay the original response without re-charging. See
-   * `code/api/app/idempotency.py`.
+   * window replay the original response without re-charging.
    */
   async createExtraction(
     request: ExtractionCreateRequest,

@@ -14,8 +14,8 @@ KNOWN_ARTIFACT_SHA256 = "789cb9743f6b84ff5274ad915b6fc89cf5e76d4ec0d8bc52db30b3a
 
 
 def canonical_artifact() -> dict[str, object]:
-    """Load the API-owned local artifact for a strict consumer parity fixture."""
-    path = Path(__file__).resolve().parents[3] / "api" / "app" / "data" / "apple_system_manifest.json"
+    """Load the integrity-pinned API artifact vendored for consumer tests."""
+    path = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "apple-system-manifest.json"
     return json.loads(path.read_text(encoding="utf-8"))
 
 

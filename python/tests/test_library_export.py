@@ -54,8 +54,8 @@ async def call_registered_export_tool(
 
 
 def canonical_records() -> list[dict[str, Any]]:
-    """Load the API-owned canonical record set used by export selections."""
-    path = Path(__file__).resolve().parents[3] / "api" / "app" / "data" / "apple_system_manifest.json"
+    """Load the integrity-pinned canonical record set used by export tests."""
+    path = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "apple-system-manifest.json"
     return json.loads(path.read_text(encoding="utf-8"))["records"]
 
 

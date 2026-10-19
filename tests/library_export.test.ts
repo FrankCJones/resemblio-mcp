@@ -56,7 +56,7 @@ async function callRegisteredExportTool(
 }
 
 async function manifestRecords(): Promise<Record<string, unknown>[]> {
-  const text = await readFile(new URL('../../api/app/data/apple_system_manifest.json', import.meta.url), 'utf8');
+  const text = await readFile(new URL('./fixtures/apple-system-manifest.json', import.meta.url), 'utf8');
   return (JSON.parse(text) as { records: Record<string, unknown>[] }).records;
 }
 
