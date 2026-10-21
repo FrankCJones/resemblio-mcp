@@ -40,7 +40,8 @@ async def prove(input_path: Path, output_path: Path) -> None:
             return httpx.Response(400, json={"error": "unexpected_path"})
         return httpx.Response(
             200,
-            json={"schema_version": 2, "data": proof_case["artifact"]},
+            content=proof_case["body"].encode("utf-8"),
+            headers={"content-type": "application/design-tokens+json"},
         )
 
     api_client = ResemblioClient(
@@ -48,7 +49,7 @@ async def prove(input_path: Path, output_path: Path) -> None:
         base_url="https://api.resemblio.test",
         transport=httpx.MockTransport(handler),
     )
-    artifacts: dict[str, Any] = {}
+    bodies: dict[str, str] = {}
     server = build_server(api_client)
     async with create_client_server_memory_streams() as (client_streams, server_streams):
         async with ClientSession(*client_streams) as session:
@@ -66,14 +67,14 @@ async def prove(input_path: Path, output_path: Path) -> None:
                     )
                     if result.is_error or not result.content or result.content[0].type != "text":
                         raise RuntimeError(f"MCP protocol call failed for {proof_case['name']}.")
-                    artifacts[proof_case["name"]] = json.loads(result.content[0].text)
+                    bodies[proof_case["name"]] = result.content[0].text
                 task_group.cancel_scope.cancel()
 
     output_path.write_text(
         json.dumps(
             {
-                "schema_version": "resemblio_python_mcp_protocol_proof_v1",
-                "artifacts": artifacts,
+                "schema_version": "resemblio_python_mcp_protocol_proof_v2",
+                "bodies": bodies,
             },
             indent=2,
             ensure_ascii=False,

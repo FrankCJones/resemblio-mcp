@@ -63,54 +63,11 @@ export interface AppleSystemManifestResponse {
   data: AppleSystemManifest;
 }
 
-/** Integrity descriptor for the separately delivered pure DTCG document. */
-export interface AppleLibraryExportTokenDescriptor {
-  path: 'tokens/design.tokens.json';
-  media_type: 'application/design-tokens+json';
-  schema_url: string;
-  sha256: string;
-  count: number;
-  domains: string[];
-}
-
-/** API-owned export metadata, including selection and artifact identity. */
-export interface AppleLibraryExportManifest {
-  schema_version: 'resemblio_apple_export_manifest_v2';
-  artifact_id: 'apple-system-dtcg';
-  artifact_version: string;
-  exporter_version: string;
-  normalization_policy_version: string;
-  reproducibility: Record<string, unknown>;
-  artifact_fingerprint: string;
-  manifest_sha256: string;
-  source_manifest_reference: Record<string, unknown>;
-  tokens: AppleLibraryExportTokenDescriptor;
-  selection: Record<string, unknown>;
-  attribution: Record<string, unknown>;
-  scrub_policy: Record<string, unknown>;
-  records: Record<string, unknown>[];
-  dependencies: Record<string, unknown>[];
-  [key: string]: unknown;
-}
-
-/** Separate API-owned tokens and manifest, returned without reconstruction. */
-export interface AppleLibraryExport {
-  tokens: Record<string, unknown>;
-  manifest: AppleLibraryExportManifest;
-}
-
-/** Discriminated selector forwarded to GET /v1/apple/exports/dtcg. */
-export type AppleLibraryExportSelection =
-  | { selection: 'complete' }
-  | { selection: 'classification'; classification: 'foundation' | 'component' | 'composition' }
-  | { selection: 'record'; record_ids: string[] };
-
 export const APPLE_SYSTEM_MANIFEST_PATH = '/v1/library/manifests/apple';
 export const APPLE_LIBRARY_EXPORT_PATH = '/v1/apple/exports/dtcg';
 const APPLE_SYSTEM_MANIFEST_SCHEMA = 'resemblio_apple_system_manifest_v1';
-const APPLE_LIBRARY_EXPORT_MANIFEST_SCHEMA = 'resemblio_apple_export_manifest_v2';
-const APPLE_LIBRARY_EXPORT_TOKEN_PATH = 'tokens/design.tokens.json';
 const APPLE_LIBRARY_EXPORT_MEDIA_TYPE = 'application/design-tokens+json';
+const DTCG_SCHEMA_URL = 'https://www.designtokens.org/schemas/2025.10/format.json';
 const SHA256_RE = /^[a-f0-9]{64}$/;
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
@@ -186,70 +143,24 @@ export function validateAppleSystemManifestResponse(payload: unknown): AppleSyst
   return validateAppleSystemManifest(payload.data);
 }
 
-/** Check every named digest in metadata without recomputing API identity. */
-function validateExportHashes(value: unknown, path: string): void {
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => validateExportHashes(item, `${path}[${index}]`));
-  } else if (isPlainObject(value)) {
-    for (const [key, item] of Object.entries(value)) {
-      if (key === 'sha256' || key.endsWith('_sha256') || key === 'artifact_fingerprint') {
-        if (typeof item !== 'string' || !SHA256_RE.test(item)) {
-          throw new Error(`Apple library export has invalid ${path}.${key}`);
-        }
-      } else {
-        validateExportHashes(item, `${path}.${key}`);
-      }
-    }
+/** Decode strict UTF-8 and validate a pure DTCG root without reserializing it. */
+export function validateDesignTokensBytes(bytes: Uint8Array): string {
+  let text: string;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error('Apple design tokens are not valid UTF-8');
   }
-}
-
-/**
- * Validate the separated export boundary and preserve all object identities.
- * The API owns schema validation and canonical hashing; MCP checks the
- * delivery shape and digest formats without rebuilding either artifact.
- */
-export function validateAppleLibraryExportResponse(payload: unknown): AppleLibraryExport {
-  if (!isPlainObject(payload) || payload.schema_version !== 2) {
-    throw new Error('Apple library export response has an unsupported schema_version');
+  let payload: unknown;
+  try {
+    payload = JSON.parse(text) as unknown;
+  } catch {
+    throw new Error('Apple design tokens are not valid JSON');
   }
-  const data = payload.data;
-  if (!isPlainObject(data) || !isPlainObject(data.tokens) || !isPlainObject(data.manifest)) {
-    throw new Error('Apple library export response has invalid tokens or manifest');
+  if (!isPlainObject(payload) || payload.$schema !== DTCG_SCHEMA_URL) {
+    throw new Error('Apple design tokens do not have a pure DTCG root');
   }
-  const manifest = data.manifest;
-  if (manifest.schema_version !== APPLE_LIBRARY_EXPORT_MANIFEST_SCHEMA ||
-      manifest.artifact_id !== 'apple-system-dtcg') {
-    throw new Error('Apple library export has an invalid manifest identity');
-  }
-  for (const field of ['artifact_version', 'exporter_version', 'normalization_policy_version',
-    'artifact_fingerprint', 'manifest_sha256']) {
-    if (typeof manifest[field] !== 'string' || (manifest[field] as string).trim() === '') {
-      throw new Error(`Apple library export has invalid manifest.${field}`);
-    }
-  }
-  for (const field of ['reproducibility', 'source_manifest_reference', 'selection',
-    'attribution', 'scrub_policy']) {
-    if (!isPlainObject(manifest[field])) {
-      throw new Error(`Apple library export has invalid manifest.${field}`);
-    }
-  }
-  for (const field of ['records', 'dependencies']) {
-    if (!Array.isArray(manifest[field]) || !(manifest[field] as unknown[]).every(isPlainObject)) {
-      throw new Error(`Apple library export has invalid manifest.${field}`);
-    }
-  }
-  const tokens = manifest.tokens;
-  if (!isPlainObject(tokens) || tokens.path !== APPLE_LIBRARY_EXPORT_TOKEN_PATH ||
-      tokens.media_type !== APPLE_LIBRARY_EXPORT_MEDIA_TYPE ||
-      typeof tokens.schema_url !== 'string' || tokens.schema_url.trim() === '' ||
-      typeof tokens.sha256 !== 'string' || !SHA256_RE.test(tokens.sha256) ||
-      !Number.isInteger(tokens.count) || (tokens.count as number) < 0 ||
-      !Array.isArray(tokens.domains) || !tokens.domains.every((domain) =>
-        typeof domain === 'string' && domain.trim() !== '')) {
-    throw new Error('Apple library export has an invalid token descriptor');
-  }
-  validateExportHashes(manifest, 'manifest');
-  return data as unknown as AppleLibraryExport;
+  return text;
 }
 
 /**
@@ -427,17 +338,16 @@ export class ResemblioClient {
     return validateAppleSystemManifestResponse(envelope);
   }
 
-  /** Fetch an entitled, no-cost Apple DTCG export for the requested slice. */
-  async getAppleLibraryExport(selection: AppleLibraryExportSelection): Promise<AppleLibraryExport> {
-    const search = new URLSearchParams({ selection: selection.selection });
-    if (selection.selection === 'classification') search.set('classification', selection.classification);
-    if (selection.selection === 'record') {
-      for (const recordId of selection.record_ids) search.append('record', recordId);
+  /** Fetch the entitled canonical design.tokens.json body without reserializing it. */
+  async getAppleLibraryExport(): Promise<string> {
+    const response = await this.requestResponse('GET', APPLE_LIBRARY_EXPORT_PATH, {
+      headers: { Accept: APPLE_LIBRARY_EXPORT_MEDIA_TYPE },
+    });
+    const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim();
+    if (contentType !== APPLE_LIBRARY_EXPORT_MEDIA_TYPE) {
+      throw new Error('Apple design tokens have an unexpected content type');
     }
-    const envelope = await this.request<unknown>(
-      'GET', `${APPLE_LIBRARY_EXPORT_PATH}?${search.toString()}`,
-    );
-    return validateAppleLibraryExportResponse(envelope);
+    return validateDesignTokensBytes(new Uint8Array(await response.arrayBuffer()));
   }
 
   /**
@@ -446,11 +356,17 @@ export class ResemblioClient {
    * `ResemblioApiError` for 4xx responses (no retry, no swallow).
    */
   private async request<T>(method: string, path: string, init: RequestInit = {}): Promise<T> {
+    const response = await this.requestResponse(method, path, init);
+    return (await response.json()) as T;
+  }
+
+  /** Return a successful raw response while preserving retry and error policy. */
+  private async requestResponse(method: string, path: string, init: RequestInit = {}): Promise<Response> {
     const url = `${this.baseUrl}${path}`;
     const headers: Record<string, string> = {
+      Accept: 'application/json',
       ...(init.headers as Record<string, string> | undefined),
       Authorization: `Bearer ${this.apiKey}`,
-      Accept: 'application/json',
     };
 
     let lastError: unknown;
@@ -458,7 +374,7 @@ export class ResemblioClient {
       try {
         const response = await this.fetchImpl(url, { ...init, method, headers });
         if (response.ok) {
-          return (await response.json()) as T;
+          return response;
         }
         const body = await this.safeJson(response);
         if (response.status >= 400 && response.status < 500) {

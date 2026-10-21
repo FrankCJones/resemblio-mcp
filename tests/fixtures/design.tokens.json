@@ -1,0 +1,1 @@
+{"$schema":"https://www.designtokens.org/schemas/2025.10/format.json","color":{"accent":{"$type":"color","$value":{"colorSpace":"srgb","components":[0.1,0.4,0.9],"alpha":1}},"label":{"$type":"color","$value":"{color.accent}"}},"fontFamily":{"display":{"$type":"fontFamily","$value":["Café Sans","sans-serif"]}}}

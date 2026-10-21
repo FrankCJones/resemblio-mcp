@@ -27,9 +27,9 @@ const fetchImpl = async (input) => {
   if (url.pathname !== '/v1/apple/exports/dtcg') {
     return new Response(JSON.stringify({ error: 'unexpected_path' }), { status: 400 });
   }
-  return new Response(JSON.stringify({ schema_version: 2, data: proofCase.artifact }), {
+  return new Response(proofCase.body, {
     status: 200,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/design-tokens+json' },
   });
 };
 
@@ -42,7 +42,7 @@ const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 await server.connect(serverTransport);
 await client.connect(clientTransport);
 
-const artifacts = {};
+const bodies = {};
 try {
   for (const proofCase of proof.cases) {
     const result = await client.callTool({
@@ -53,7 +53,7 @@ try {
     if (result.isError || !block || block.type !== 'text') {
       throw new Error(`MCP protocol call failed for ${proofCase.name}.`);
     }
-    artifacts[proofCase.name] = JSON.parse(block.text);
+    bodies[proofCase.name] = block.text;
   }
 } finally {
   await client.close();
@@ -61,6 +61,6 @@ try {
 }
 
 await writeFile(outputPath, `${JSON.stringify({
-  schema_version: 'resemblio_typescript_mcp_protocol_proof_v1',
-  artifacts,
+  schema_version: 'resemblio_typescript_mcp_protocol_proof_v2',
+  bodies,
 }, null, 2)}\n`, 'utf8');

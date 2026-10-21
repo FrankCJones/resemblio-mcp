@@ -84,7 +84,7 @@ export function resolveConfig(
  */
 export function buildServer(client: ResemblioClient): Server {
   const server = new Server(
-    { name: 'resemblio-mcp-server', version: '0.2.1' },
+    { name: 'resemblio-mcp-server', version: '0.3.0' },
     { capabilities: { tools: {} } },
   );
 
@@ -109,7 +109,7 @@ export function buildServer(client: ResemblioClient): Server {
       }
       if (name === getLibraryExportTool.name) {
         const output = await runGetLibraryExport(client, args ?? {});
-        return { content: [{ type: 'text', text: JSON.stringify(output, null, 2) }] };
+        return { content: [{ type: 'text', text: output }] };
       }
       return {
         isError: true,

@@ -86,17 +86,11 @@ Retrieve the verified canonical Apple library manifest. This no-input, read-only
 ### `resemblio_get_library_export`
 
 Retrieve a no-cost Apple DTCG export. Requires an entitled Resemblio API key.
-The tool returns the API's two named values unchanged: `tokens` is the pure
-DTCG document, and `manifest` carries selection, provenance, attribution,
-scrub policy, version, and the SHA-256 identity for
-`tokens/design.tokens.json`.
-
-Input uses one selector:
-- `{ "selection": "complete" }`
-- `{ "selection": "classification", "classification": "foundation" | "component" | "composition" }`
-- `{ "selection": "record", "record_ids": ["component:buttons"] }` (one or more canonical record IDs)
-
-Record IDs are deduplicated and sorted before the API request. Invalid selectors fail closed; the API's stable selection errors are preserved.
+The tool accepts no input and returns the API's exact `design.tokens.json`
+body as its sole text result. It does not parse and reserialize the file, add
+an envelope, choose a slice, or require a Resemblio-specific runtime. The
+returned text is pure Design Tokens Community Group JSON and preserves the
+API's UTF-8 bytes, including its terminal line feed.
 
 ## Configuration reference
 

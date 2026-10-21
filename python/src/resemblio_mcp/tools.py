@@ -11,12 +11,9 @@ so both server implementations advertise the same shape to MCP clients.
 """
 from __future__ import annotations
 
-import re
 from typing import Any, TypedDict
 
 from resemblio_mcp.client import (
-    AppleLibraryExport,
-    AppleLibraryExportSelection,
     ExtractionCreateRequest,
     ExtractionListResponse,
     ExtractionResponse,
@@ -27,7 +24,6 @@ EXTRACT_TOOL_NAME = "resemblio_extract"
 LIST_TOOL_NAME = "resemblio_list_extractions"
 GET_LIBRARY_MANIFEST_TOOL_NAME = "resemblio_get_library_manifest"
 GET_LIBRARY_EXPORT_TOOL_NAME = "resemblio_get_library_export"
-APPLE_RECORD_ID_PATTERN = r"^(foundation|component|composition):[a-z0-9][a-z0-9-]*$"
 
 EXTRACT_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -64,29 +60,7 @@ GET_LIBRARY_MANIFEST_INPUT_SCHEMA: dict[str, Any] = {
 
 GET_LIBRARY_EXPORT_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
-    "oneOf": [
-        {
-            "properties": {"selection": {"const": "complete"}},
-            "required": ["selection"],
-            "additionalProperties": False,
-        },
-        {
-            "properties": {
-                "selection": {"const": "classification"},
-                "classification": {"type": "string", "enum": ["foundation", "component", "composition"]},
-            },
-            "required": ["selection", "classification"],
-            "additionalProperties": False,
-        },
-        {
-            "properties": {
-                "selection": {"const": "record"},
-                "record_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": APPLE_RECORD_ID_PATTERN}},
-            },
-            "required": ["selection", "record_ids"],
-            "additionalProperties": False,
-        },
-    ],
+    "properties": {},
     "additionalProperties": False,
 }
 
@@ -215,39 +189,19 @@ async def run_get_library_manifest(
     return await client.get_apple_system_manifest()
 
 
-def normalize_library_export_input(args: Any) -> AppleLibraryExportSelection:
-    """Validate a selector fail-closed and sort/deduplicate record IDs."""
+def validate_library_export_input(args: Any) -> dict[str, Any]:
+    """Reject every argument so the public tool has one deterministic action."""
     if not isinstance(args, dict):
-        raise ValueError("invalid_selection")
-    selection = args.get("selection")
-    if selection == "complete":
-        if set(args) != {"selection"}:
-            raise ValueError("mixed_selection_contracts")
-        return {"selection": "complete"}
-    if selection == "classification":
-        if set(args) - {"selection", "classification"}:
-            raise ValueError("mixed_selection_contracts")
-        classification = args.get("classification")
-        if set(args) != {"selection", "classification"} or classification not in {
-            "foundation", "component", "composition"
-        }:
-            raise ValueError("invalid_classification")
-        return {"selection": "classification", "classification": classification}
-    if selection == "record":
-        if set(args) - {"selection", "record_ids"}:
-            raise ValueError("mixed_selection_contracts")
-        record_ids = args.get("record_ids")
-        if set(args) != {"selection", "record_ids"} or not isinstance(record_ids, list) or not record_ids:
-            raise ValueError("missing_records")
-        if any(not isinstance(record_id, str) or re.fullmatch(APPLE_RECORD_ID_PATTERN, record_id) is None for record_id in record_ids):
-            raise ValueError("invalid_record_id")
-        return {"selection": "record", "record_ids": sorted(set(record_ids))}
-    raise ValueError("invalid_selection")
+        raise ValueError("library export input must be an object")
+    if args:
+        raise ValueError("library export does not accept arguments")
+    return {}
 
 
-async def run_get_library_export(client: ResemblioClient, args: Any) -> AppleLibraryExport:
-    """Fetch a selected DTCG export and return the API artifact unchanged."""
-    return await client.get_apple_library_export(normalize_library_export_input(args))
+async def run_get_library_export(client: ResemblioClient, args: Any) -> str:
+    """Fetch and return the exact decoded canonical JSON body."""
+    validate_library_export_input(args)
+    return await client.get_apple_library_export()
 
 
 async def run_list_extractions(client: ResemblioClient, args: dict[str, Any]) -> ListToolOutput:

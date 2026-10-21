@@ -163,8 +163,8 @@ def build_server(client: ResemblioClient):
             Tool(
                 name=GET_LIBRARY_EXPORT_TOOL_NAME,
                 description=(
-                    "Retrieve a complete Apple DTCG export or a classification or record slice. "
-                    "This read-only tool is free and returns the API artifact unchanged. "
+                    "Retrieve the canonical Apple design.tokens.json document as pure DTCG JSON. "
+                    "This read-only tool returns the exact API body. "
                     "Requires an entitled Resemblio API key."
                 ),
                 inputSchema=GET_LIBRARY_EXPORT_INPUT_SCHEMA,
@@ -196,7 +196,7 @@ def build_server(client: ResemblioClient):
             if name == GET_LIBRARY_EXPORT_TOOL_NAME:
                 result = await run_get_library_export(client, arguments or {})
                 return CallToolResult(
-                    content=[TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+                    content=[TextContent(type="text", text=result)]
                 )
             return CallToolResult(
                 isError=True,

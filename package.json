@@ -1,6 +1,6 @@
 {
   "name": "@resemblio/mcp-server",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Model Context Protocol server for Resemblio - extract trademark-stripped, brand-faithful, code-bearing design systems from any URL. Inspirado, no copiado.",
   "license": "MIT",
   "author": "Frank Jones <frank@optsus.com>",

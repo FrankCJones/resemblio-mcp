@@ -24,7 +24,7 @@ import asyncio
 import hashlib
 import json
 import re
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, TypedDict, cast
 
 import httpx
 from pydantic import BaseModel, ConfigDict
@@ -59,82 +59,9 @@ AppleSystemManifestPayload = TypedDict(
 APPLE_SYSTEM_MANIFEST_PATH = "/v1/library/manifests/apple"
 APPLE_LIBRARY_EXPORT_PATH = "/v1/apple/exports/dtcg"
 APPLE_SYSTEM_MANIFEST_SCHEMA = "resemblio_apple_system_manifest_v1"
-APPLE_LIBRARY_EXPORT_MANIFEST_SCHEMA = "resemblio_apple_export_manifest_v2"
-APPLE_LIBRARY_EXPORT_TOKEN_PATH = "tokens/design.tokens.json"
 APPLE_LIBRARY_EXPORT_MEDIA_TYPE = "application/design-tokens+json"
+DTCG_SCHEMA_URL = "https://www.designtokens.org/schemas/2025.10/format.json"
 SHA256_HEX_RE = re.compile(r"^[a-f0-9]{64}$")
-
-
-class AppleLibraryExportTokenDescriptor(TypedDict):
-    """Integrity descriptor for the pure DTCG token document."""
-
-    path: Literal["tokens/design.tokens.json"]
-    media_type: Literal["application/design-tokens+json"]
-    schema_url: str
-    sha256: str
-    count: int
-    domains: list[str]
-
-
-class AppleLibraryExportManifest(TypedDict):
-    """API-owned metadata, selection, and artifact identity."""
-
-    schema_version: Literal["resemblio_apple_export_manifest_v2"]
-    artifact_id: Literal["apple-system-dtcg"]
-    artifact_version: str
-    exporter_version: str
-    normalization_policy_version: str
-    reproducibility: dict[str, Any]
-    artifact_fingerprint: str
-    manifest_sha256: str
-    source_manifest_reference: dict[str, Any]
-    tokens: AppleLibraryExportTokenDescriptor
-    selection: dict[str, Any]
-    attribution: dict[str, Any]
-    scrub_policy: dict[str, Any]
-    records: list[dict[str, Any]]
-    dependencies: list[dict[str, Any]]
-
-
-class AppleLibraryExport(TypedDict):
-    """Separate API-owned values returned unchanged by MCP."""
-
-    tokens: dict[str, Any]
-    manifest: AppleLibraryExportManifest
-
-
-class AppleLibraryExportEnvelope(TypedDict):
-    """Versioned API envelope around an unchanged export artifact."""
-
-    schema_version: Literal[2]
-    data: AppleLibraryExport
-
-
-class AppleLibraryExportCompleteSelection(TypedDict):
-    """Request all canonical export records."""
-
-    selection: Literal["complete"]
-
-
-class AppleLibraryExportClassificationSelection(TypedDict):
-    """Request one canonical classification slice."""
-
-    selection: Literal["classification"]
-    classification: Literal["foundation", "component", "composition"]
-
-
-class AppleLibraryExportRecordSelection(TypedDict):
-    """Request one or more canonical record IDs."""
-
-    selection: Literal["record"]
-    record_ids: list[str]
-
-
-AppleLibraryExportSelection = (
-    AppleLibraryExportCompleteSelection
-    | AppleLibraryExportClassificationSelection
-    | AppleLibraryExportRecordSelection
-)
 
 
 def _canonical_json(value: Any) -> str:
@@ -174,58 +101,19 @@ def validate_apple_system_manifest(payload: Any) -> AppleSystemManifestPayload:
     return cast(AppleSystemManifestPayload, payload)
 
 
-def _validate_export_hashes(value: Any, path: str) -> None:
-    """Check named digest formats recursively without recomputing identity."""
-    if isinstance(value, list):
-        for index, item in enumerate(value):
-            _validate_export_hashes(item, f"{path}[{index}]")
-    elif isinstance(value, dict):
-        for key, item in value.items():
-            if key == "sha256" or key.endswith("_sha256") or key == "artifact_fingerprint":
-                if not isinstance(item, str) or SHA256_HEX_RE.fullmatch(item) is None:
-                    raise ValueError(f"Apple library export has invalid {path}.{key}")
-            else:
-                _validate_export_hashes(item, f"{path}.{key}")
-
-
-def validate_apple_library_export_response(payload: Any) -> AppleLibraryExport:
-    """Validate shape and hashes while preserving both API-owned mappings.
-
-    The API owns full DTCG schema validation and canonical hashing. MCP
-    checks delivery requirements without rebuilding tokens or metadata.
-    """
-    if not isinstance(payload, dict) or type(payload.get("schema_version")) is not int or payload["schema_version"] != 2:
-        raise ValueError("Apple library export response has an unsupported schema_version")
-    data = payload.get("data")
-    if not isinstance(data, dict) or not isinstance(data.get("tokens"), dict) or not isinstance(data.get("manifest"), dict):
-        raise ValueError("Apple library export response has invalid tokens or manifest")
-    manifest = data["manifest"]
-    if manifest.get("schema_version") != APPLE_LIBRARY_EXPORT_MANIFEST_SCHEMA or manifest.get("artifact_id") != "apple-system-dtcg":
-        raise ValueError("Apple library export has an invalid manifest identity")
-    for field in ("artifact_version", "exporter_version", "normalization_policy_version", "artifact_fingerprint", "manifest_sha256"):
-        value = manifest.get(field)
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError(f"Apple library export has invalid manifest.{field}")
-    for field in ("reproducibility", "source_manifest_reference", "selection", "attribution", "scrub_policy"):
-        if not isinstance(manifest.get(field), dict):
-            raise ValueError(f"Apple library export has invalid manifest.{field}")
-    for field in ("records", "dependencies"):
-        if not isinstance(manifest.get(field), list) or not all(isinstance(item, dict) for item in manifest[field]):
-            raise ValueError(f"Apple library export has invalid manifest.{field}")
-    tokens = manifest.get("tokens")
-    if (
-        not isinstance(tokens, dict)
-        or tokens.get("path") != APPLE_LIBRARY_EXPORT_TOKEN_PATH
-        or tokens.get("media_type") != APPLE_LIBRARY_EXPORT_MEDIA_TYPE
-        or not isinstance(tokens.get("schema_url"), str) or not tokens["schema_url"].strip()
-        or not isinstance(tokens.get("sha256"), str) or SHA256_HEX_RE.fullmatch(tokens["sha256"]) is None
-        or type(tokens.get("count")) is not int or tokens["count"] < 0
-        or not isinstance(tokens.get("domains"), list)
-        or not all(isinstance(domain, str) and domain.strip() for domain in tokens["domains"])
-    ):
-        raise ValueError("Apple library export has an invalid token descriptor")
-    _validate_export_hashes(manifest, "manifest")
-    return cast(AppleLibraryExport, data)
+def validate_design_tokens_bytes(body: bytes) -> str:
+    """Decode strict UTF-8 and validate a pure DTCG root without reserializing."""
+    try:
+        text = body.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ValueError("Apple design tokens are not valid UTF-8") from exc
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Apple design tokens are not valid JSON") from exc
+    if not isinstance(payload, dict) or payload.get("$schema") != DTCG_SCHEMA_URL:
+        raise ValueError("Apple design tokens do not have a pure DTCG root")
+    return text
 
 
 class ExtractionListItem(BaseModel):
@@ -419,17 +307,17 @@ class ResemblioClient:
             raise ValueError("Apple system manifest response has an unsupported schema_version")
         return validate_apple_system_manifest(envelope["data"])
 
-    async def get_apple_library_export(
-        self, selection: AppleLibraryExportSelection
-    ) -> AppleLibraryExport:
-        """Fetch an entitled no-cost DTCG export and return its data unchanged."""
-        params: list[tuple[str, str]] = [("selection", selection["selection"])]
-        if selection["selection"] == "classification":
-            params.append(("classification", selection["classification"]))
-        elif selection["selection"] == "record":
-            params.extend(("record", record_id) for record_id in selection["record_ids"])
-        envelope = await self._request("GET", APPLE_LIBRARY_EXPORT_PATH, params=params)
-        return validate_apple_library_export_response(envelope)
+    async def get_apple_library_export(self) -> str:
+        """Fetch the canonical design.tokens.json body without reserializing it."""
+        response = await self._request_response(
+            "GET",
+            APPLE_LIBRARY_EXPORT_PATH,
+            extra_headers={"Accept": APPLE_LIBRARY_EXPORT_MEDIA_TYPE},
+        )
+        content_type = response.headers.get("content-type", "").split(";", 1)[0].strip()
+        if content_type != APPLE_LIBRARY_EXPORT_MEDIA_TYPE:
+            raise ValueError("Apple design tokens have an unexpected content type")
+        return validate_design_tokens_bytes(response.content)
 
     async def _request(
         self,
@@ -446,6 +334,25 @@ class ResemblioClient:
         also enter the retry loop. 4xx responses raise
         :class:`ResemblioApiError` immediately without retry.
         """
+        response = await self._request_response(
+            method,
+            path,
+            json=json,
+            params=params,
+            extra_headers=extra_headers,
+        )
+        return response.json()
+
+    async def _request_response(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: Any = None,
+        params: dict[str, Any] | list[tuple[str, str]] | None = None,
+        extra_headers: dict[str, str] | None = None,
+    ) -> httpx.Response:
+        """Return a successful raw response with the shared retry policy."""
         last_exc: Exception | None = None
         async with self._new_http_client() as http:
             for attempt in range(self._max_retries + 1):
@@ -458,7 +365,7 @@ class ResemblioClient:
                         headers=extra_headers,
                     )
                     if 200 <= response.status_code < 300:
-                        return response.json()
+                        return response
                     body = self._safe_json(response)
                     if 400 <= response.status_code < 500:
                         raise ResemblioApiError(response.status_code, body)
